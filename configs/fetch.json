@@ -1,0 +1,7 @@
+{
+   "base_url": "https://www.finn.no/mobility/search/car?model=1.777.2000638&registration_class=1",
+   "limit": 150,
+   "max_pages": 10,
+   "fetched_by": "filtered-ev9",
+   "headless": false
+}

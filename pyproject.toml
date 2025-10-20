@@ -1,8 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "finn-bruktbil-2025"
+name = "finnbruktbil"
 version = "0.1.0"
-dependencies=[
+dependencies = [
     "selenium",
     "webdriver-manager",
     "tqdm",
+    "pandas",
+    "streamlit",
+    "pydantic",
 ]
+
+[project.scripts]
+finnbruktbil = "finnbruktbil.cli:main"
+
+[tool.setuptools]
+packages = ["finnbruktbil", "finnbruktbil.cli"]

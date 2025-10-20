@@ -1,0 +1,6 @@
+{
+   "limit": 50,
+   "stale_hours": 24,
+   "random_order": false,
+   "headless": false
+}
