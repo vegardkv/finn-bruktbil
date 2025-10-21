@@ -1,6 +1,27 @@
+// .devcontainer/devcontainer.json
 {
-  "image": "mcr.microsoft.com/devcontainers/universal:2",
-  "features": {
-    "ghcr.io/va-h/devcontainers-features/uv:1": {}
-  }
+  "name": "Python + uv + Selenium",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+
+  // Install system dependencies before running the postCreate script
+  "onCreateCommand": "sudo apt-get update && sudo apt-get install -y chromium chromium-driver",
+
+  // Then set up your uv-based environment
+  "postCreateCommand": "bash ./.devcontainer/postCreateCommand.sh",
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": ".venv/bin/python",
+        "python.terminal.activateEnvironment": true
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "qwtel.sqlite-viewer"
+      ]
+    }
+  },
+
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}"
 }

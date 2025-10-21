@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import random
+import shutil
 import time
 from typing import Iterable, Iterator
 
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import SessionNotCreatedException, TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -25,7 +26,39 @@ def create_driver(headless: bool = True) -> webdriver.Chrome:
     options.add_argument(
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36"
     )
-    return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+
+    chromium_binary = shutil.which("chromium") or shutil.which("chromium-browser")
+    if chromium_binary:
+        options.binary_location = chromium_binary
+
+    # Try available chromedriver binaries sequentially to survive version mismatches.
+    candidates = []
+    system_chromedriver = shutil.which("chromedriver")
+    if system_chromedriver:
+        candidates.append(
+            (
+                "system chromedriver",
+                lambda path=system_chromedriver: Service(path),
+            )
+        )
+    candidates.append(
+        (
+            "webdriver-manager chromedriver",
+            lambda: Service(ChromeDriverManager().install()),
+        )
+    )
+
+    last_exc = None
+    for source, service_factory in candidates:
+        try:
+            return webdriver.Chrome(service=service_factory(), options=options)
+        except (SessionNotCreatedException, WebDriverException) as exc:
+            last_exc = exc
+            continue
+
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("Unable to initialize Chrome driver")
 
 
 def wait_for_elements(driver: webdriver.Chrome, selector: str, timeout: int = 10) -> bool:

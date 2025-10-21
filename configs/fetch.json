@@ -3,5 +3,5 @@
    "limit": 150,
    "max_pages": 10,
    "fetched_by": "filtered-ev9",
-   "headless": false
+   "headless": true
 }
