@@ -12,6 +12,7 @@ dependencies = [
     "pandas",
     "streamlit",
     "pydantic",
+    "plotly",
 ]
 
 [project.scripts]
