@@ -13,6 +13,8 @@ dependencies = [
     "streamlit",
     "pydantic",
     "plotly",
+    "scikit-learn>=1.0", # For OLS regression and metrics
+    "numpy>=1.20", # For numerical computations
 ]
 
 [project.scripts]

@@ -1,5 +1,5 @@
 {
-   "limit": 5,
+   "limit": 100,
    "stale_hours": 24,
    "random_order": false,
    "headless": true

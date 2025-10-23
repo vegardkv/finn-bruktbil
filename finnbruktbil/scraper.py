@@ -113,6 +113,11 @@ def scrape_ad(driver, ad_id: str) -> Optional[AdRecord]:
 
     title = _text_or_none(driver, "h1")
     
+    # TODO: There is a "Totalpris" field that could be scraped as well. This is
+    # important, since the key info section may not include the actual price.
+    # TODO: for kia ev9 it is interesting to know if this is a GT-line or not.
+    #   This is not necessarily in the title, nor key info section.
+
     try:
         key_info_section = driver.find_element(By.CSS_SELECTOR, ".key-info-section")
         key_info = _extract_key_info(key_info_section)
