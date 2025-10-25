@@ -18,8 +18,19 @@ def _text_or_none(driver, selector: str) -> Optional[str]:
         element = driver.find_element(By.CSS_SELECTOR, selector)
     except NoSuchElementException:
         return None
-    text = element.text.strip()
+    text = (element.get_attribute("textContent") or "").strip()
     return text or None
+
+
+def _get_text_content(element: WebElement) -> str:
+    """Extract text content from an element using textContent attribute.
+    
+    This is more reliable than .text as it gets all text including hidden elements.
+    """
+    raw_text = (element.get_attribute("textContent") or "").strip()
+    # Normalize whitespace
+    normalized = raw_text.replace("\xa0", " ").replace("\u202f", " ")
+    return " ".join(part for part in normalized.split())
 
 
 def _parse_int(value: Optional[str]) -> Optional[int]:
@@ -44,18 +55,15 @@ def _extract_key_info(root: WebElement) -> Dict[str, str]:
         for key_el, value_el in zip(keys, values):
             # Use textContent which gets all text (even hidden)
             raw_key = (key_el.get_attribute("textContent") or "").strip()
-            raw_value = (value_el.get_attribute("textContent") or "").strip()
+            raw_value = _get_text_content(value_el)
             if not raw_key or not raw_value:
                 continue
 
             key_line = raw_key.splitlines()[0].strip()
             key = key_line.rstrip(":")
 
-            value = raw_value.replace("\xa0", " ").replace("\u202f", " ")
-            value = " ".join(part for part in value.split())
-
-            if key and value and key not in key_info:
-                key_info[key] = value
+            if key and raw_value and key not in key_info:
+                key_info[key] = raw_value
     return key_info
 
 
@@ -113,10 +121,29 @@ def scrape_ad(driver, ad_id: str) -> Optional[AdRecord]:
 
     title = _text_or_none(driver, "h1")
     
-    # TODO: There is a "Totalpris" field that could be scraped as well. This is
-    # important, since the key info section may not include the actual price.
-    # TODO: for kia ev9 it is interesting to know if this is a GT-line or not.
-    #   This is not necessarily in the title, nor key info section.
+    # Extract subtitle - the paragraph right after the h1 title
+    subtitle = None
+    try:
+        # Look for the subtitle that comes after h1
+        h1_elem = driver.find_element(By.CSS_SELECTOR, "h1")
+        parent = h1_elem.find_element(By.XPATH, "..")
+        subtitle_elem = parent.find_element(By.CSS_SELECTOR, "p.s-text-subtle")
+        subtitle_text = _get_text_content(subtitle_elem)
+        subtitle = subtitle_text or None
+    except NoSuchElementException:
+        pass
+    
+    # Extract total price - look for "Totalpris" label
+    totalpris = None
+    try:
+        # Find the element containing "Totalpris" text
+        price_label = driver.find_element(By.XPATH, "//p[contains(text(), 'Totalpris')]")
+        # Get the sibling h2 that contains the price
+        price_section = price_label.find_element(By.XPATH, "..")
+        price_elem = price_section.find_element(By.CSS_SELECTOR, "h2 span.t2")
+        totalpris = _parse_int(_get_text_content(price_elem))
+    except NoSuchElementException:
+        pass
 
     try:
         key_info_section = driver.find_element(By.CSS_SELECTOR, ".key-info-section")
@@ -142,6 +169,8 @@ def scrape_ad(driver, ad_id: str) -> Optional[AdRecord]:
         ad_id=ad_id,
         fetched_at=datetime.now(),
         title=title,
+        subtitle=subtitle,
+        totalpris=totalpris,
         omregistrering=_parse_int(key_info.get(FIELD_MAPPING["omregistrering"])),
         pris_eks_omreg=_parse_int(key_info.get(FIELD_MAPPING["pris_eks_omreg"])),
         årsavgift_info=key_info.get(FIELD_MAPPING["årsavgift_info"]),

@@ -51,6 +51,8 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
             ad_id TEXT PRIMARY KEY,
             fetched_at TIMESTAMP NOT NULL,
             title TEXT,
+            subtitle TEXT,
+            totalpris INTEGER,
             omregistrering INTEGER,
             pris_eks_omreg INTEGER,
             årsavgift_info TEXT,
@@ -89,6 +91,8 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
     )
 
     _ensure_column(conn, "ad_ids", "fetched_by", "TEXT NOT NULL DEFAULT 'unknown'")
+    _ensure_column(conn, "ad_details", "subtitle", "TEXT")
+    _ensure_column(conn, "ad_details", "totalpris", "INTEGER")
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
@@ -128,7 +132,9 @@ class AdRecord:
     fetched_at: datetime
     # Basic info
     title: Optional[str]
+    subtitle: Optional[str]  # Additional car description/variant
     # Pricing
+    totalpris: Optional[int]  # NOK - Total price from the ad page
     omregistrering: Optional[int]  # NOK
     pris_eks_omreg: Optional[int]  # NOK
     årsavgift_info: Optional[str]
@@ -169,7 +175,7 @@ def save_ad_detail(conn: sqlite3.Connection, record: AdRecord) -> None:
     conn.execute(
         """
         INSERT INTO ad_details (
-            ad_id, fetched_at, title,
+            ad_id, fetched_at, title, subtitle, totalpris,
             omregistrering, pris_eks_omreg, årsavgift_info,
             merke, modell, modellår, karosseri, drivstoff,
             effekt_hk, kilometerstand_km, batterikapasitet_kWh,
@@ -179,10 +185,12 @@ def save_ad_detail(conn: sqlite3.Connection, record: AdRecord) -> None:
             neste_eu_kontroll, avgiftsklasse, registreringsnummer,
             chassisnummer, førstegangsregistrert, eiere, garanti,
             salgsform, raw_spec_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(ad_id) DO UPDATE SET
             fetched_at = excluded.fetched_at,
             title = excluded.title,
+            subtitle = excluded.subtitle,
+            totalpris = excluded.totalpris,
             omregistrering = excluded.omregistrering,
             pris_eks_omreg = excluded.pris_eks_omreg,
             årsavgift_info = excluded.årsavgift_info,
@@ -220,6 +228,8 @@ def save_ad_detail(conn: sqlite3.Connection, record: AdRecord) -> None:
             record.ad_id,
             record.fetched_at.isoformat(timespec="seconds"),
             record.title,
+            record.subtitle,
+            record.totalpris,
             record.omregistrering,
             record.pris_eks_omreg,
             record.årsavgift_info,

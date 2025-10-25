@@ -72,11 +72,57 @@ selected_model = st.sidebar.selectbox("Model", options=["(All)"] + model_options
 if selected_model != "(All)":
     subset = subset[subset["modell"] == selected_model]
 
+seats_options = sorted({int(s) for s in subset["seter"].dropna().unique() if s})
+selected_seats = st.sidebar.selectbox("Number of seats", options=["(All)"] + seats_options)
+if selected_seats != "(All)":
+    subset = subset[subset["seter"] == selected_seats]
+
+# Trim level filter based on subtitle
+st.sidebar.markdown("**Trim Level**")
+trim_gt_line = st.sidebar.checkbox("GT-Line", value=True)
+trim_exclusive = st.sidebar.checkbox("Exclusive", value=True)
+trim_undetermined = st.sidebar.checkbox("Undetermined", value=True)
+
+# Categorize each row based on subtitle
+def categorize_trim(subtitle):
+    if pd.isna(subtitle) or subtitle == "":
+        return "undetermined"
+    subtitle_lower = str(subtitle).lower()
+    if "gt-line" in subtitle_lower or "gt line" in subtitle_lower:
+        return "gt-line"
+    elif "exclusive" in subtitle_lower:
+        return "exclusive"
+    else:
+        return "undetermined"
+
+subset["trim_category"] = subset["subtitle"].apply(categorize_trim)
+
+# TODO: it would be better to rather post-process the database for auxiliary fields
+# This post-processing should be able to run while downloading/scraping the data
+# if requested. Relevant aspects:
+# - Identify trim level more generally, so that the analysis script references trim
+#   level column instead of a model-specific subtitle parsing.
+# - Determine if two sets of tires are included (summer/winter). This could be
+#   inferred from subtitle or other fields. May want to use chatgpt or similar
+#   to help with natural language parsing of subtitles and descriptions.
+
+# Filter based on selected trim levels
+selected_trims = []
+if trim_gt_line:
+    selected_trims.append("gt-line")
+if trim_exclusive:
+    selected_trims.append("exclusive")
+if trim_undetermined:
+    selected_trims.append("undetermined")
+
+if selected_trims:
+    subset = subset[subset["trim_category"].isin(selected_trims)]
+
 if subset.empty:
     st.warning("No data matches the selected filters.")
     st.stop()
 
-price_min, price_max = _series_bounds(subset["pris_eks_omreg"], 0, 0)
+price_min, price_max = _series_bounds(subset["totalpris"], 0, 0)
 if price_min < price_max:
     price_range = st.sidebar.slider(
         "Price (NOK)",
@@ -84,7 +130,7 @@ if price_min < price_max:
         price_max,
         value=(price_min, price_max),
     )
-    subset = subset[(subset["pris_eks_omreg"].fillna(0) >= price_range[0]) & (subset["pris_eks_omreg"].fillna(0) <= price_range[1])]
+    subset = subset[(subset["totalpris"].fillna(0) >= price_range[0]) & (subset["totalpris"].fillna(0) <= price_range[1])]
 else:
     st.sidebar.text(f"Price: {price_min:,} NOK")
 
@@ -133,14 +179,14 @@ subset["age_years"] = (subset["fetched_at_dt"] - subset["førstegangsregistrert_
 def perform_ols_analysis(data):
     """Perform OLS regression analysis on car price data."""
     # Filter out rows with missing values for the analysis
-    analysis_data = data.dropna(subset=["pris_eks_omreg", "kilometerstand_km", "age_years"]).copy()
+    analysis_data = data.dropna(subset=["totalpris", "kilometerstand_km", "age_years"]).copy()
     
     if len(analysis_data) < 10:  # Need sufficient data points
         return None, None, None, None
     
     # Prepare features and target
     X = analysis_data[["kilometerstand_km", "age_years"]].values
-    y = analysis_data["pris_eks_omreg"].values
+    y = analysis_data["totalpris"].values
     
     if SKLEARN_AVAILABLE:
         # Fit OLS model using sklearn
@@ -238,13 +284,13 @@ if metrics is not None:
         fig_usedness = px.scatter(
             analysis_subset,
             x="usedness",
-            y="pris_eks_omreg",
+            y="totalpris",
             color="age_years",
             size="kilometerstand_km",
             hover_data=["title", "merke", "modell", "kilometerstand_km", "age_years"],
             labels={
                 "usedness": "Usedness Score (0=New, 1=Most Used)",
-                "pris_eks_omreg": "Price (NOK)",
+                "totalpris": "Price (NOK)",
                 "age_years": "Age (years)",
                 "kilometerstand_km": "Mileage (km)"
             },
@@ -275,7 +321,7 @@ if metrics is not None:
         
         # Add correlation info
         if len(analysis_subset) > 1:
-            corr = analysis_subset["usedness"].corr(analysis_subset["pris_eks_omreg"])
+            corr = analysis_subset["usedness"].corr(analysis_subset["totalpris"])
             st.markdown(f"**Correlation between Usedness and Price**: {corr:.3f}")
     
 else:
@@ -291,16 +337,16 @@ else:
 scatter_cols = st.columns(2)
 with scatter_cols[0]:
     st.subheader("Price vs. Mileage")
-    mileage_data = subset.dropna(subset=["kilometerstand_km", "pris_eks_omreg", "age_years"])
+    mileage_data = subset.dropna(subset=["kilometerstand_km", "totalpris", "age_years"])
     fig_mileage = px.scatter(
         mileage_data,
         x="kilometerstand_km",
-        y="pris_eks_omreg",
+        y="totalpris",
         color="age_years",
         hover_data=["title", "merke", "modell", "førstegangsregistrert"],
         labels={
             "kilometerstand_km": "Mileage (km)",
-            "pris_eks_omreg": "Price (NOK)",
+            "totalpris": "Price (NOK)",
             "age_years": "Age (years)"
         },
         color_continuous_scale="viridis"
@@ -309,7 +355,7 @@ with scatter_cols[0]:
     # Add regression line
     if len(mileage_data) > 1:
         X_mileage = mileage_data["kilometerstand_km"].values.reshape(-1, 1)
-        y_mileage = mileage_data["pris_eks_omreg"].values
+        y_mileage = mileage_data["totalpris"].values
         
         if SKLEARN_AVAILABLE:
             lr_mileage = LinearRegression()
@@ -342,16 +388,16 @@ with scatter_cols[0]:
 
 with scatter_cols[1]:
     st.subheader("Price vs. Registration Date")
-    reg_data = subset.dropna(subset=["førstegangsregistrert", "pris_eks_omreg"])
+    reg_data = subset.dropna(subset=["førstegangsregistrert", "totalpris"])
     fig_registration = px.scatter(
         reg_data,
         x="førstegangsregistrert",
-        y="pris_eks_omreg",
+        y="totalpris",
         color="kilometerstand_km",
         hover_data=["title", "merke", "modell"],
         labels={
             "førstegangsregistrert": "First Registration",
-            "pris_eks_omreg": "Price (NOK)",
+            "totalpris": "Price (NOK)",
             "kilometerstand_km": "Mileage (km)"
         },
         color_continuous_scale="plasma"
@@ -363,7 +409,7 @@ with scatter_cols[1]:
         reg_dates = pd.to_datetime(reg_data["førstegangsregistrert"])
         min_date = reg_dates.min()
         X_reg = (reg_dates - min_date).dt.days.values.reshape(-1, 1)
-        y_reg = reg_data["pris_eks_omreg"].values
+        y_reg = reg_data["totalpris"].values
         
         if SKLEARN_AVAILABLE:
             lr_reg = LinearRegression()
@@ -403,7 +449,7 @@ st.subheader("Matching ads")
 display_columns = [
     "ad_id",
     "title", 
-    "pris_eks_omreg",
+    "totalpris",
     "kilometerstand_km",
     "age_years",
     "modellår",
@@ -427,7 +473,7 @@ if analysis_subset is not None and "usedness" in analysis_subset.columns:
     else:
         # If no ad_id for merging, add usedness to all rows that have complete data
         complete_data_mask = (
-            display_subset["pris_eks_omreg"].notna() & 
+            display_subset["totalpris"].notna() & 
             display_subset["kilometerstand_km"].notna() & 
             display_subset["age_years"].notna()
         )
@@ -435,6 +481,6 @@ if analysis_subset is not None and "usedness" in analysis_subset.columns:
         display_columns.insert(5, "usedness")
 
 st.dataframe(
-    display_subset[display_columns].sort_values(by="pris_eks_omreg", ascending=False),
+    display_subset[display_columns].sort_values(by="totalpris", ascending=False),
     use_container_width=True,
 )
