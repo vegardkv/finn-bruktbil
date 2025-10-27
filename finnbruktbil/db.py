@@ -85,6 +85,9 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
             garanti TEXT,
             salgsform TEXT,
             raw_spec_json TEXT NOT NULL,
+            tire_sets TEXT,
+            trim_level TEXT,
+            raw_description TEXT,
             FOREIGN KEY (ad_id) REFERENCES ad_ids (ad_id) ON DELETE CASCADE
         );
         """
@@ -93,6 +96,9 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "ad_ids", "fetched_by", "TEXT NOT NULL DEFAULT 'unknown'")
     _ensure_column(conn, "ad_details", "subtitle", "TEXT")
     _ensure_column(conn, "ad_details", "totalpris", "INTEGER")
+    _ensure_column(conn, "ad_details", "tire_sets", "TEXT")
+    _ensure_column(conn, "ad_details", "trim_level", "TEXT")
+    _ensure_column(conn, "ad_details", "raw_description", "TEXT")
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
@@ -169,6 +175,10 @@ class AdRecord:
     salgsform: Optional[str]
     # Raw specs for additional data
     specs: Dict[str, str]
+    # Auxiliary data from description parsing
+    tire_sets: Optional[str]  # "one_set", "two_sets", or "unknown"
+    trim_level: Optional[str]
+    raw_description: Optional[str]
 
 
 def save_ad_detail(conn: sqlite3.Connection, record: AdRecord) -> None:
@@ -184,8 +194,8 @@ def save_ad_detail(conn: sqlite3.Connection, record: AdRecord) -> None:
             farge, fargebeskrivelse, interiørfarge, bilen_står_i,
             neste_eu_kontroll, avgiftsklasse, registreringsnummer,
             chassisnummer, førstegangsregistrert, eiere, garanti,
-            salgsform, raw_spec_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            salgsform, raw_spec_json, tire_sets, trim_level, raw_description
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(ad_id) DO UPDATE SET
             fetched_at = excluded.fetched_at,
             title = excluded.title,
@@ -222,7 +232,10 @@ def save_ad_detail(conn: sqlite3.Connection, record: AdRecord) -> None:
             eiere = excluded.eiere,
             garanti = excluded.garanti,
             salgsform = excluded.salgsform,
-            raw_spec_json = excluded.raw_spec_json
+            raw_spec_json = excluded.raw_spec_json,
+            tire_sets = excluded.tire_sets,
+            trim_level = excluded.trim_level,
+            raw_description = excluded.raw_description
         """,
         (
             record.ad_id,
@@ -262,6 +275,9 @@ def save_ad_detail(conn: sqlite3.Connection, record: AdRecord) -> None:
             record.garanti,
             record.salgsform,
             json.dumps(record.specs, ensure_ascii=True),
+            record.tire_sets,
+            record.trim_level,
+            record.raw_description,
         ),
     )
     conn.execute(

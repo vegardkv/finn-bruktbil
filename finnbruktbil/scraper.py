@@ -114,7 +114,7 @@ FIELD_MAPPING = {
 }
 
 
-def scrape_ad(driver, ad_id: str) -> Optional[AdRecord]:
+def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRecord]:
     driver.get(f"{AD_BASE_URL}{ad_id}")
     if not wait_for_elements(driver, "h1", timeout=15):
         return None
@@ -164,6 +164,22 @@ def scrape_ad(driver, ad_id: str) -> Optional[AdRecord]:
     if redundant_keys:
         print(f"Redundant keys for ad {ad_id}: {sorted(redundant_keys)}")
 
+    # Parse auxiliary data if enabled
+    tire_sets_value = None
+    trim_level_value = None
+    raw_description_value = None
+    
+    if parse_aux_data:
+        try:
+            from .aux_data_parser import parse_aux_data_from_ad
+            aux_data = parse_aux_data_from_ad(driver, ad_id)
+            if aux_data:
+                tire_sets_value = aux_data.tire_sets.value
+                trim_level_value = aux_data.trim_level
+                raw_description_value = aux_data.raw_description
+        except Exception as exc:
+            print(f"Warning: Failed to parse auxiliary data for ad {ad_id}: {exc}")
+
     # Map key_info to AdRecord fields
     return AdRecord(
         ad_id=ad_id,
@@ -203,4 +219,7 @@ def scrape_ad(driver, ad_id: str) -> Optional[AdRecord]:
         garanti=key_info.get(FIELD_MAPPING["garanti"]),
         salgsform=key_info.get(FIELD_MAPPING["salgsform"]),
         specs=key_info,  # Store all raw specs
+        tire_sets=tire_sets_value,
+        trim_level=trim_level_value,
+        raw_description=raw_description_value,
     )

@@ -48,9 +48,25 @@ Example `configs/download.json`:
    "limit": 50,
    "stale_hours": 24,
    "random_order": false,
-   "headless": true
+   "headless": true,
+   "parse_aux_data": false
 }
 ```
+
+**Auxiliary Data Parsing**: Set `"parse_aux_data": true` to enable parsing of additional information from ad descriptions using OpenAI's API. This extracts:
+- **Tire sets**: Whether the car comes with one or two sets of tires (including winter tires)
+- **Trim level**: The equipment/trim level (e.g., "GT-Line", "Premium", "Elegance")
+
+To use this feature:
+1. Install the required dependencies: `pip install -e .` (includes `openai` and `python-dotenv`)
+2. Set your OpenAI API key either by:
+   - Creating a `.env` file: `cp .env.example .env` and add your key, **OR**
+   - Setting an environment variable: `export OPENAI_API_KEY=your-key-here`
+3. Set `"parse_aux_data": true` in your download config
+
+The implementation works seamlessly with both `.env` files (local development) and environment variables (GitHub Codespaces, Docker, CI/CD).
+
+Note: This feature requires an OpenAI API key and will incur API costs.
 
 Example `configs/analyze.json`:
 

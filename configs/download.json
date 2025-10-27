@@ -2,5 +2,6 @@
    "limit": 100,
    "stale_hours": null,
    "random_order": false,
-   "headless": true
+   "headless": true,
+   "parse_aux_data": true
 }

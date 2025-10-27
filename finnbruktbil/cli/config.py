@@ -29,6 +29,7 @@ class DownloadConfig(BaseModel):
     random_order: bool = False
     db: Path | None = None
     headless: bool = True
+    parse_aux_data: bool = Field(default=False, description="Enable parsing of auxiliary data (tire sets, trim level) using OpenAI API")
 
     @property
     def resolved_db_path(self) -> Path:

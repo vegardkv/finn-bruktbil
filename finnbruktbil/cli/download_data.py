@@ -60,7 +60,7 @@ def download_ads(config: DownloadConfig) -> tuple[int, int]:
     try:
         for ad_id in target_ids:
             try:
-                record = scrape_ad(driver, ad_id)
+                record = scrape_ad(driver, ad_id, parse_aux_data=config.parse_aux_data)
             except WebDriverException as exc:
                 print(f"Encountered webdriver issue for ad {ad_id}: {exc}")
                 break
