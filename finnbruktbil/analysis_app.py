@@ -122,6 +122,45 @@ if subset.empty:
     st.warning("No data matches the selected filters.")
     st.stop()
 
+# Plot customization options
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Plot Customization**")
+
+# Get numeric columns for color and size options
+numeric_columns = subset.select_dtypes(include=[np.number]).columns.tolist()
+# Add calculated fields that will be available
+available_color_options = ["age_years", "kilometerstand_km", "totalpris", "modellår", "seter", "tire_sets_numeric"]
+available_size_options = ["None"] + ["kilometerstand_km", "totalpris", "age_years", "modellår"]
+
+color_column = st.sidebar.selectbox(
+    "Color by",
+    options=available_color_options,
+    index=0,  # Default to age_years
+    help="Select which column to use for coloring the data points",
+    format_func=lambda x: {
+        "age_years": "Age (years)",
+        "kilometerstand_km": "Mileage (km)",
+        "totalpris": "Price (NOK)",
+        "modellår": "Model Year",
+        "seter": "Seats",
+        "tire_sets_numeric": "Tire Sets"
+    }.get(x, x)
+)
+
+size_column = st.sidebar.selectbox(
+    "Size by",
+    options=available_size_options,
+    index=1,  # Default to kilometerstand_km
+    help="Select which column to use for sizing the data points",
+    format_func=lambda x: {
+        "None": "None",
+        "kilometerstand_km": "Mileage (km)",
+        "totalpris": "Price (NOK)",
+        "age_years": "Age (years)",
+        "modellår": "Model Year"
+    }.get(x, x)
+)
+
 price_min, price_max = _series_bounds(subset["totalpris"], 0, 0)
 if price_min < price_max:
     price_range = st.sidebar.slider(
@@ -174,6 +213,22 @@ subset = subset.copy()
 subset["fetched_at_dt"] = pd.to_datetime(subset["fetched_at"], errors="coerce")
 subset["førstegangsregistrert_dt"] = pd.to_datetime(subset["førstegangsregistrert"], errors="coerce")
 subset["age_years"] = (subset["fetched_at_dt"] - subset["førstegangsregistrert_dt"]).dt.days / 365.25
+
+# Map tire_sets to categorical values for better display
+def map_tire_sets(value):
+    if pd.isna(value) or value == "" or value == "unknown":
+        return "unknown"
+    elif value == "one_set":
+        return "one_set"
+    elif value == "two_sets":
+        return "two_sets"
+    else:
+        return "unknown"
+
+subset["tire_sets_cat"] = subset["tire_sets"].apply(map_tire_sets)
+# Create numeric mapping for color scale: unknown=0, one_set=1, two_sets=2
+tire_sets_numeric_map = {"unknown": 0, "one_set": 1, "two_sets": 2}
+subset["tire_sets_numeric"] = subset["tire_sets_cat"].map(tire_sets_numeric_map)
 
 # OLS Regression Model: Price = c0 + c1*mileage + c2*age
 def perform_ols_analysis(data):
@@ -281,22 +336,54 @@ if metrics is not None:
     # Usedness vs Price plot
     if analysis_subset is not None:
         st.subheader("Price vs. Usedness Score")
-        fig_usedness = px.scatter(
-            analysis_subset,
-            x="usedness",
-            y="totalpris",
-            color="age_years",
-            size="kilometerstand_km",
-            hover_data=["title", "merke", "modell", "kilometerstand_km", "age_years"],
-            labels={
-                "usedness": "Usedness Score (0=New, 1=Most Used)",
-                "totalpris": "Price (NOK)",
-                "age_years": "Age (years)",
-                "kilometerstand_km": "Mileage (km)"
-            },
-            color_continuous_scale="viridis",
-            title="Car Price vs. Combined Usedness Score"
-        )
+        
+        # Prepare plot parameters
+        plot_size = size_column if size_column != "None" else None
+        
+        # Use discrete colors for tire_sets, continuous for others
+        if color_column == "tire_sets_numeric":
+            fig_usedness = px.scatter(
+                analysis_subset,
+                x="usedness",
+                y="totalpris",
+                color="tire_sets_cat",
+                size=plot_size,
+                hover_data=["title", "merke", "modell", "kilometerstand_km", "age_years", "tire_sets_cat"],
+                labels={
+                    "usedness": "Usedness Score (0=New, 1=Most Used)",
+                    "totalpris": "Price (NOK)",
+                    "age_years": "Age (years)",
+                    "kilometerstand_km": "Mileage (km)",
+                    "modellår": "Model Year",
+                    "seter": "Seats",
+                    "tire_sets_numeric": "Tire Sets",
+                    "tire_sets_cat": "Tire Sets"
+                },
+                category_orders={"tire_sets_cat": ["unknown", "one_set", "two_sets"]},
+                color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"},
+                title="Car Price vs. Combined Usedness Score"
+            )
+        else:
+            fig_usedness = px.scatter(
+                analysis_subset,
+                x="usedness",
+                y="totalpris",
+                color=color_column,
+                size=plot_size,
+                hover_data=["title", "merke", "modell", "kilometerstand_km", "age_years", "tire_sets_cat"],
+                labels={
+                    "usedness": "Usedness Score (0=New, 1=Most Used)",
+                    "totalpris": "Price (NOK)",
+                    "age_years": "Age (years)",
+                    "kilometerstand_km": "Mileage (km)",
+                    "modellår": "Model Year",
+                    "seter": "Seats",
+                    "tire_sets_numeric": "Tire Sets",
+                    "tire_sets_cat": "Tire Sets"
+                },
+                color_continuous_scale="viridis",
+                title="Car Price vs. Combined Usedness Score"
+            )
         
         # Add regression line: Price = c0 + usedness (perfectly straight line)
         # Since usedness = c1 * mileage + c2 * age, this is the OLS prediction
@@ -338,19 +425,50 @@ scatter_cols = st.columns(2)
 with scatter_cols[0]:
     st.subheader("Price vs. Mileage")
     mileage_data = subset.dropna(subset=["kilometerstand_km", "totalpris", "age_years"])
-    fig_mileage = px.scatter(
-        mileage_data,
-        x="kilometerstand_km",
-        y="totalpris",
-        color="age_years",
-        hover_data=["title", "merke", "modell", "førstegangsregistrert"],
-        labels={
-            "kilometerstand_km": "Mileage (km)",
-            "totalpris": "Price (NOK)",
-            "age_years": "Age (years)"
-        },
-        color_continuous_scale="viridis"
-    )
+    
+    # Prepare plot parameters
+    plot_size = size_column if size_column != "None" else None
+    
+    # Use discrete colors for tire_sets, continuous for others
+    if color_column == "tire_sets_numeric":
+        fig_mileage = px.scatter(
+            mileage_data,
+            x="kilometerstand_km",
+            y="totalpris",
+            color="tire_sets_cat",
+            size=plot_size,
+            hover_data=["title", "merke", "modell", "førstegangsregistrert", "tire_sets_cat"],
+            labels={
+                "kilometerstand_km": "Mileage (km)",
+                "totalpris": "Price (NOK)",
+                "age_years": "Age (years)",
+                "modellår": "Model Year",
+                "seter": "Seats",
+                "tire_sets_numeric": "Tire Sets",
+                "tire_sets_cat": "Tire Sets"
+            },
+            category_orders={"tire_sets_cat": ["unknown", "one_set", "two_sets"]},
+            color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"}
+        )
+    else:
+        fig_mileage = px.scatter(
+            mileage_data,
+            x="kilometerstand_km",
+            y="totalpris",
+            color=color_column,
+            size=plot_size,
+            hover_data=["title", "merke", "modell", "førstegangsregistrert", "tire_sets_cat"],
+            labels={
+                "kilometerstand_km": "Mileage (km)",
+                "totalpris": "Price (NOK)",
+                "age_years": "Age (years)",
+                "modellår": "Model Year",
+                "seter": "Seats",
+                "tire_sets_numeric": "Tire Sets",
+                "tire_sets_cat": "Tire Sets"
+            },
+            color_continuous_scale="viridis"
+        )
     
     # Add regression line
     if len(mileage_data) > 1:
@@ -389,19 +507,52 @@ with scatter_cols[0]:
 with scatter_cols[1]:
     st.subheader("Price vs. Registration Date")
     reg_data = subset.dropna(subset=["førstegangsregistrert", "totalpris"])
-    fig_registration = px.scatter(
-        reg_data,
-        x="førstegangsregistrert",
-        y="totalpris",
-        color="kilometerstand_km",
-        hover_data=["title", "merke", "modell"],
-        labels={
-            "førstegangsregistrert": "First Registration",
-            "totalpris": "Price (NOK)",
-            "kilometerstand_km": "Mileage (km)"
-        },
-        color_continuous_scale="plasma"
-    )
+    
+    # Prepare plot parameters
+    plot_size = size_column if size_column != "None" else None
+    
+    # Use discrete colors for tire_sets, continuous for others
+    if color_column == "tire_sets_numeric":
+        fig_registration = px.scatter(
+            reg_data,
+            x="førstegangsregistrert",
+            y="totalpris",
+            color="tire_sets_cat",
+            size=plot_size,
+            hover_data=["title", "merke", "modell", "tire_sets_cat"],
+            labels={
+                "førstegangsregistrert": "First Registration",
+                "totalpris": "Price (NOK)",
+                "kilometerstand_km": "Mileage (km)",
+                "age_years": "Age (years)",
+                "modellår": "Model Year",
+                "seter": "Seats",
+                "tire_sets_numeric": "Tire Sets",
+                "tire_sets_cat": "Tire Sets"
+            },
+            category_orders={"tire_sets_cat": ["unknown", "one_set", "two_sets"]},
+            color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"}
+        )
+    else:
+        fig_registration = px.scatter(
+            reg_data,
+            x="førstegangsregistrert",
+            y="totalpris",
+            color=color_column,
+            size=plot_size,
+            hover_data=["title", "merke", "modell", "tire_sets_cat"],
+            labels={
+                "førstegangsregistrert": "First Registration",
+                "totalpris": "Price (NOK)",
+                "kilometerstand_km": "Mileage (km)",
+                "age_years": "Age (years)",
+                "modellår": "Model Year",
+                "seter": "Seats",
+                "tire_sets_numeric": "Tire Sets",
+                "tire_sets_cat": "Tire Sets"
+            },
+            color_continuous_scale="plasma"
+        )
     
     # Add regression line
     if len(reg_data) > 1:
