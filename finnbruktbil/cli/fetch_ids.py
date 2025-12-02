@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -14,6 +15,7 @@ from .config import FetchIdsConfig, load_config
 
 RESULT_SELECTOR = "a.sf-search-ad-link"
 DEFAULT_FETCHED_BY = "finn_search"
+FAVORITES_FETCHED_BY = "favorites_file"
 
 
 def build_page_url(base_url: str, page: int) -> str:
@@ -60,6 +62,29 @@ def collect_ad_ids(driver, base_url: str, max_pages: int, limit: int) -> List[st
     return collected
 
 
+def extract_ids_from_favorites_file(file_path: Path) -> List[str]:
+    """Extract ad IDs from a local favorites HTML file.
+    
+    The favorites HTML contains embedded JSON with items that have "itemId" fields.
+    """
+    html_content = file_path.read_text(encoding="utf-8")
+    
+    # Look for itemId values in the embedded JSON data
+    # Pattern matches "itemId":123456789 where the number is the ad ID
+    pattern = r'"itemId"\s*:\s*(\d+)'
+    matches = re.findall(pattern, html_content)
+    
+    # Deduplicate while preserving order
+    seen = set()
+    unique_ids: List[str] = []
+    for match in matches:
+        if match not in seen:
+            seen.add(match)
+            unique_ids.append(match)
+    
+    return unique_ids
+
+
 def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         "fetch-ids",
@@ -76,12 +101,37 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
 
 
 def fetch_ids_into_db(config: FetchIdsConfig) -> List[str]:
-    """Fetch ad identifiers from a FINN search URL and persist them."""
+    """Fetch ad identifiers from a FINN search URL or favorites file and persist them."""
 
     db_path = str(config.resolved_db_path)
 
     with db_session(db_path) as conn:
         initialize_schema(conn)
+
+    # Mode 1: Parse local favorites HTML file
+    if config.favorites_file:
+        favorites_path = Path(config.favorites_file)
+        if not favorites_path.exists():
+            raise FileNotFoundError(f"Favorites file not found: {favorites_path}")
+        
+        ad_ids = extract_ids_from_favorites_file(favorites_path)
+        if config.limit:
+            ad_ids = ad_ids[:config.limit]
+        
+        if not ad_ids:
+            return []
+        
+        fetched_by = config.fetched_by if config.fetched_by != "finn_search" else FAVORITES_FETCHED_BY
+        source = str(favorites_path)
+        
+        with db_session(db_path) as conn:
+            upsert_ad_ids(conn, source, ad_ids, fetched_by=fetched_by)
+        
+        return ad_ids
+
+    # Mode 2: Scrape from FINN search URL
+    if not config.base_url:
+        raise ValueError("Either base_url or favorites_file must be provided")
 
     driver = create_driver(headless=config.headless)
     try:

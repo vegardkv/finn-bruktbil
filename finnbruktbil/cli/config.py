@@ -11,7 +11,8 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class FetchIdsConfig(BaseModel):
-    base_url: str
+    base_url: str | None = None
+    favorites_file: Path | None = None
     limit: int = Field(default=200, ge=1)
     max_pages: int = Field(default=25, ge=1)
     db: Path | None = None
