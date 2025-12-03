@@ -103,10 +103,8 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
 def fetch_ids_into_db(config: FetchIdsConfig) -> List[str]:
     """Fetch ad identifiers from a FINN search URL or favorites file and persist them."""
 
-    db_path = str(config.resolved_db_path)
-
-    with db_session(db_path) as conn:
-        initialize_schema(conn)
+    with db_session() as client:
+        initialize_schema(client)
 
     # Mode 1: Parse local favorites HTML file
     if config.favorites_file:
@@ -124,8 +122,8 @@ def fetch_ids_into_db(config: FetchIdsConfig) -> List[str]:
         fetched_by = config.fetched_by if config.fetched_by != "finn_search" else FAVORITES_FETCHED_BY
         source = str(favorites_path)
         
-        with db_session(db_path) as conn:
-            upsert_ad_ids(conn, source, ad_ids, fetched_by=fetched_by)
+        with db_session() as client:
+            upsert_ad_ids(client, source, ad_ids, fetched_by=fetched_by)
         
         return ad_ids
 
@@ -147,8 +145,8 @@ def fetch_ids_into_db(config: FetchIdsConfig) -> List[str]:
     if not ad_ids:
         return []
 
-    with db_session(db_path) as conn:
-        upsert_ad_ids(conn, config.base_url, ad_ids, fetched_by=config.fetched_by)
+    with db_session() as client:
+        upsert_ad_ids(client, config.base_url, ad_ids, fetched_by=config.fetched_by)
 
     return ad_ids
 

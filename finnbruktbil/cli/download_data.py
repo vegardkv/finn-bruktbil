@@ -40,12 +40,10 @@ def download_ads(config: DownloadConfig) -> tuple[int, int]:
     successfully scraped and the number marked missing.
     """
 
-    db_path = str(config.resolved_db_path)
-
-    with db_session(db_path) as conn:
-        initialize_schema(conn)
+    with db_session() as client:
+        initialize_schema(client)
         target_ids: List[str] = fetch_ids_for_scraping(
-            conn,
+            client,
             limit=config.limit,
             stale_hours=config.stale_hours,
             random_order=config.random_order,
@@ -66,13 +64,13 @@ def download_ads(config: DownloadConfig) -> tuple[int, int]:
                 break
 
             if record is None:
-                with db_session(db_path) as conn:
-                    mark_missing(conn, ad_id)
+                with db_session() as client:
+                    mark_missing(client, ad_id)
                 missing += 1
                 continue
 
-            with db_session(db_path) as conn:
-                save_ad_detail(conn, record)
+            with db_session() as client:
+                save_ad_detail(client, record)
             scraped += 1
             polite_delay()
     finally:

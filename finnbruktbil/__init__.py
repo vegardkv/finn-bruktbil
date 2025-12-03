@@ -3,7 +3,6 @@
 from .browser import create_driver, polite_delay, wait_for_elements
 from .cli import main as cli_main
 from .db import (
-    DEFAULT_DB_PATH,
     AdRecord,
     db_session,
     fetch_ids_for_scraping,
@@ -16,7 +15,6 @@ from .db import (
 from .scraper import scrape_ad
 
 __all__ = [
-    "DEFAULT_DB_PATH",
     "AdRecord",
     "cli_main",
     "create_driver",

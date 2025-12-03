@@ -15,8 +15,9 @@ dependencies = [
     "plotly",
     "scikit-learn>=1.0", # For OLS regression and metrics
     "numpy>=1.20", # For numerical computations
-    "openai",  # For auxiliary data parsing
-    "python-dotenv",  # For .env file support
+    "openai", # For auxiliary data parsing
+    "python-dotenv", # For .env file support
+    "supabase", # Cloud database
 ]
 
 [project.scripts]

@@ -1,135 +1,150 @@
 from __future__ import annotations
 
 import json
-import sqlite3
+import os
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, Iterator, List, Optional
 
-DEFAULT_DB_PATH = Path("data") / "finn.db"
+from dotenv import load_dotenv
+from supabase import create_client, Client
+
+# Load environment variables from .env file
+load_dotenv()
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
 
-def _ensure_parent(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-
-def get_connection(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
-    path = Path(db_path)
-    _ensure_parent(path)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+def _get_client() -> Client:
+    """Create and return a Supabase client."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise RuntimeError(
+            "Supabase credentials not configured. "
+            "Set SUPABASE_URL and SUPABASE_KEY environment variables or in .env file."
+        )
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 @contextmanager
-def db_session(db_path: Path | str = DEFAULT_DB_PATH) -> Iterator[sqlite3.Connection]:
-    conn = get_connection(db_path)
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+def db_session() -> Iterator[Client]:
+    """Context manager for Supabase client (for API compatibility)."""
+    client = _get_client()
+    yield client
 
 
-def initialize_schema(conn: sqlite3.Connection) -> None:
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS ad_ids (
-            ad_id TEXT PRIMARY KEY,
-            source_url TEXT NOT NULL,
-            fetched_by TEXT NOT NULL DEFAULT 'unknown',
-            first_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            last_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            last_scraped TIMESTAMP,
-            scrape_status TEXT NOT NULL DEFAULT 'pending'
-        );
+def initialize_schema(client: Client) -> None:
+    """No-op for Supabase - tables are created via the Supabase dashboard.
+    
+    Run this SQL in your Supabase SQL Editor to create the required tables:
+    
+    CREATE TABLE IF NOT EXISTS ad_ids (
+        ad_id TEXT PRIMARY KEY,
+        source_url TEXT NOT NULL,
+        fetched_by TEXT NOT NULL DEFAULT 'unknown',
+        first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_scraped TIMESTAMPTZ,
+        scrape_status TEXT NOT NULL DEFAULT 'pending'
+    );
 
-        CREATE TABLE IF NOT EXISTS ad_details (
-            ad_id TEXT PRIMARY KEY,
-            fetched_at TIMESTAMP NOT NULL,
-            title TEXT,
-            subtitle TEXT,
-            totalpris INTEGER,
-            omregistrering INTEGER,
-            pris_eks_omreg INTEGER,
-            årsavgift_info TEXT,
-            merke TEXT,
-            modell TEXT,
-            modellår INTEGER,
-            karosseri TEXT,
-            drivstoff TEXT,
-            effekt_hk INTEGER,
-            kilometerstand_km INTEGER,
-            batterikapasitet_kWh INTEGER,
-            rekkevidde_km INTEGER,
-            girkasse TEXT,
-            maksimal_tilhengervekt_kg INTEGER,
-            hjuldrift TEXT,
-            vekt_kg INTEGER,
-            seter INTEGER,
-            dører INTEGER,
-            bagasjerom_volum_l INTEGER,
-            farge TEXT,
-            fargebeskrivelse TEXT,
-            interiørfarge TEXT,
-            bilen_står_i TEXT,
-            neste_eu_kontroll TEXT,
-            avgiftsklasse TEXT,
-            registreringsnummer TEXT,
-            chassisnummer TEXT,
-            førstegangsregistrert TEXT,
-            eiere INTEGER,
-            garanti TEXT,
-            salgsform TEXT,
-            raw_spec_json TEXT NOT NULL,
-            tire_sets TEXT,
-            trim_level TEXT,
-            raw_description TEXT,
-            FOREIGN KEY (ad_id) REFERENCES ad_ids (ad_id) ON DELETE CASCADE
-        );
-        """
-    )
+    CREATE TABLE IF NOT EXISTS ad_details (
+        ad_id TEXT PRIMARY KEY REFERENCES ad_ids(ad_id) ON DELETE CASCADE,
+        fetched_at TIMESTAMPTZ NOT NULL,
+        title TEXT,
+        subtitle TEXT,
+        totalpris INTEGER,
+        omregistrering INTEGER,
+        pris_eks_omreg INTEGER,
+        aarsavgift_info TEXT,
+        merke TEXT,
+        modell TEXT,
+        modellaar INTEGER,
+        karosseri TEXT,
+        drivstoff TEXT,
+        effekt_hk INTEGER,
+        kilometerstand_km INTEGER,
+        batterikapasitet_kwh INTEGER,
+        rekkevidde_km INTEGER,
+        girkasse TEXT,
+        maksimal_tilhengervekt_kg INTEGER,
+        hjuldrift TEXT,
+        vekt_kg INTEGER,
+        seter INTEGER,
+        doerer INTEGER,
+        bagasjerom_volum_l INTEGER,
+        farge TEXT,
+        fargebeskrivelse TEXT,
+        interioerfarge TEXT,
+        bilen_staar_i TEXT,
+        neste_eu_kontroll TEXT,
+        avgiftsklasse TEXT,
+        registreringsnummer TEXT,
+        chassisnummer TEXT,
+        foerstegangsregistrert TEXT,
+        eiere INTEGER,
+        garanti TEXT,
+        salgsform TEXT,
+        raw_spec_json JSONB NOT NULL,
+        tire_sets TEXT,
+        trim_level TEXT,
+        raw_description TEXT
+    );
 
-    _ensure_column(conn, "ad_ids", "fetched_by", "TEXT NOT NULL DEFAULT 'unknown'")
-    _ensure_column(conn, "ad_details", "subtitle", "TEXT")
-    _ensure_column(conn, "ad_details", "totalpris", "INTEGER")
-    _ensure_column(conn, "ad_details", "tire_sets", "TEXT")
-    _ensure_column(conn, "ad_details", "trim_level", "TEXT")
-    _ensure_column(conn, "ad_details", "raw_description", "TEXT")
-
-
-def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
-    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
-    if column not in existing:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    -- Create indexes for common queries
+    CREATE INDEX IF NOT EXISTS idx_ad_ids_scrape_status ON ad_ids(scrape_status);
+    CREATE INDEX IF NOT EXISTS idx_ad_ids_last_scraped ON ad_ids(last_scraped);
+    """
+    pass
 
 
 def upsert_ad_ids(
-    conn: sqlite3.Connection,
+    client: Client,
     source_url: str,
     ad_ids: Iterable[str],
     *,
     fetched_by: str = "unknown",
 ) -> None:
-    now = datetime.utcnow().isoformat(timespec="seconds")
-    conn.executemany(
-        """
-        INSERT INTO ad_ids (ad_id, source_url, fetched_by, first_seen, last_seen)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(ad_id) DO UPDATE SET
-            source_url = excluded.source_url,
-            fetched_by = excluded.fetched_by,
-            last_seen = excluded.last_seen,
-            scrape_status = CASE
-                WHEN ad_ids.scrape_status = 'missing' THEN 'pending'
-                ELSE ad_ids.scrape_status
-            END
-        """,
-        ((ad_id, source_url, fetched_by, now, now) for ad_id in ad_ids),
-    )
+    """Insert or update ad IDs in the database."""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    records = [
+        {
+            "ad_id": ad_id,
+            "source_url": source_url,
+            "fetched_by": fetched_by,
+            "first_seen": now,
+            "last_seen": now,
+            "scrape_status": "pending",
+        }
+        for ad_id in ad_ids
+    ]
+    
+    if not records:
+        return
+    
+    # Supabase upsert: on conflict, update last_seen and conditionally scrape_status
+    # We need to handle this in batches and with custom logic
+    for record in records:
+        # Check if exists
+        existing = client.table("ad_ids").select("ad_id, scrape_status").eq("ad_id", record["ad_id"]).execute()
+        
+        if existing.data:
+            # Update existing record
+            update_data = {
+                "source_url": record["source_url"],
+                "fetched_by": record["fetched_by"],
+                "last_seen": record["last_seen"],
+            }
+            # Reset status from 'missing' to 'pending'
+            if existing.data[0]["scrape_status"] == "missing":
+                update_data["scrape_status"] = "pending"
+            
+            client.table("ad_ids").update(update_data).eq("ad_id", record["ad_id"]).execute()
+        else:
+            # Insert new record
+            client.table("ad_ids").insert(record).execute()
 
 
 @dataclass
@@ -138,11 +153,11 @@ class AdRecord:
     fetched_at: datetime
     # Basic info
     title: Optional[str]
-    subtitle: Optional[str]  # Additional car description/variant
+    subtitle: Optional[str]
     # Pricing
-    totalpris: Optional[int]  # NOK - Total price from the ad page
-    omregistrering: Optional[int]  # NOK
-    pris_eks_omreg: Optional[int]  # NOK
+    totalpris: Optional[int]
+    omregistrering: Optional[int]
+    pris_eks_omreg: Optional[int]
     årsavgift_info: Optional[str]
     # Car details
     merke: Optional[str]
@@ -165,184 +180,179 @@ class AdRecord:
     fargebeskrivelse: Optional[str]
     interiørfarge: Optional[str]
     bilen_står_i: Optional[str]
-    neste_eu_kontroll: Optional[str]  # Store as ISO date string
+    neste_eu_kontroll: Optional[str]
     avgiftsklasse: Optional[str]
     registreringsnummer: Optional[str]
     chassisnummer: Optional[str]
-    førstegangsregistrert: Optional[str]  # Store as ISO date string
+    førstegangsregistrert: Optional[str]
     eiere: Optional[int]
     garanti: Optional[str]
     salgsform: Optional[str]
-    # Raw specs for additional data
+    # Raw specs
     specs: Dict[str, str]
-    # Auxiliary data from description parsing
-    tire_sets: Optional[str]  # "one_set", "two_sets", or "unknown"
+    # Auxiliary data
+    tire_sets: Optional[str]
     trim_level: Optional[str]
     raw_description: Optional[str]
 
 
-def save_ad_detail(conn: sqlite3.Connection, record: AdRecord) -> None:
-    conn.execute(
-        """
-        INSERT INTO ad_details (
-            ad_id, fetched_at, title, subtitle, totalpris,
-            omregistrering, pris_eks_omreg, årsavgift_info,
-            merke, modell, modellår, karosseri, drivstoff,
-            effekt_hk, kilometerstand_km, batterikapasitet_kWh,
-            rekkevidde_km, girkasse, maksimal_tilhengervekt_kg,
-            hjuldrift, vekt_kg, seter, dører, bagasjerom_volum_l,
-            farge, fargebeskrivelse, interiørfarge, bilen_står_i,
-            neste_eu_kontroll, avgiftsklasse, registreringsnummer,
-            chassisnummer, førstegangsregistrert, eiere, garanti,
-            salgsform, raw_spec_json, tire_sets, trim_level, raw_description
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(ad_id) DO UPDATE SET
-            fetched_at = excluded.fetched_at,
-            title = excluded.title,
-            subtitle = excluded.subtitle,
-            totalpris = excluded.totalpris,
-            omregistrering = excluded.omregistrering,
-            pris_eks_omreg = excluded.pris_eks_omreg,
-            årsavgift_info = excluded.årsavgift_info,
-            merke = excluded.merke,
-            modell = excluded.modell,
-            modellår = excluded.modellår,
-            karosseri = excluded.karosseri,
-            drivstoff = excluded.drivstoff,
-            effekt_hk = excluded.effekt_hk,
-            kilometerstand_km = excluded.kilometerstand_km,
-            batterikapasitet_kWh = excluded.batterikapasitet_kWh,
-            rekkevidde_km = excluded.rekkevidde_km,
-            girkasse = excluded.girkasse,
-            maksimal_tilhengervekt_kg = excluded.maksimal_tilhengervekt_kg,
-            hjuldrift = excluded.hjuldrift,
-            vekt_kg = excluded.vekt_kg,
-            seter = excluded.seter,
-            dører = excluded.dører,
-            bagasjerom_volum_l = excluded.bagasjerom_volum_l,
-            farge = excluded.farge,
-            fargebeskrivelse = excluded.fargebeskrivelse,
-            interiørfarge = excluded.interiørfarge,
-            bilen_står_i = excluded.bilen_står_i,
-            neste_eu_kontroll = excluded.neste_eu_kontroll,
-            avgiftsklasse = excluded.avgiftsklasse,
-            registreringsnummer = excluded.registreringsnummer,
-            chassisnummer = excluded.chassisnummer,
-            førstegangsregistrert = excluded.førstegangsregistrert,
-            eiere = excluded.eiere,
-            garanti = excluded.garanti,
-            salgsform = excluded.salgsform,
-            raw_spec_json = excluded.raw_spec_json,
-            tire_sets = excluded.tire_sets,
-            trim_level = excluded.trim_level,
-            raw_description = excluded.raw_description
-        """,
-        (
-            record.ad_id,
-            record.fetched_at.isoformat(timespec="seconds"),
-            record.title,
-            record.subtitle,
-            record.totalpris,
-            record.omregistrering,
-            record.pris_eks_omreg,
-            record.årsavgift_info,
-            record.merke,
-            record.modell,
-            record.modellår,
-            record.karosseri,
-            record.drivstoff,
-            record.effekt_hk,
-            record.kilometerstand_km,
-            record.batterikapasitet_kWh,
-            record.rekkevidde_km,
-            record.girkasse,
-            record.maksimal_tilhengervekt_kg,
-            record.hjuldrift,
-            record.vekt_kg,
-            record.seter,
-            record.dører,
-            record.bagasjerom_volum_l,
-            record.farge,
-            record.fargebeskrivelse,
-            record.interiørfarge,
-            record.bilen_står_i,
-            record.neste_eu_kontroll,
-            record.avgiftsklasse,
-            record.registreringsnummer,
-            record.chassisnummer,
-            record.førstegangsregistrert,
-            record.eiere,
-            record.garanti,
-            record.salgsform,
-            json.dumps(record.specs, ensure_ascii=True),
-            record.tire_sets,
-            record.trim_level,
-            record.raw_description,
-        ),
-    )
-    conn.execute(
-        """
-        UPDATE ad_ids
-        SET last_scraped = ?, scrape_status = 'scraped'
-        WHERE ad_id = ?
-        """,
-        (record.fetched_at.isoformat(timespec="seconds"), record.ad_id),
-    )
+def save_ad_detail(client: Client, record: AdRecord) -> None:
+    """Save or update an ad detail record."""
+    data = {
+        "ad_id": record.ad_id,
+        "fetched_at": record.fetched_at.isoformat(),
+        "title": record.title,
+        "subtitle": record.subtitle,
+        "totalpris": record.totalpris,
+        "omregistrering": record.omregistrering,
+        "pris_eks_omreg": record.pris_eks_omreg,
+        "aarsavgift_info": record.årsavgift_info,
+        "merke": record.merke,
+        "modell": record.modell,
+        "modellaar": record.modellår,
+        "karosseri": record.karosseri,
+        "drivstoff": record.drivstoff,
+        "effekt_hk": record.effekt_hk,
+        "kilometerstand_km": record.kilometerstand_km,
+        "batterikapasitet_kwh": record.batterikapasitet_kWh,
+        "rekkevidde_km": record.rekkevidde_km,
+        "girkasse": record.girkasse,
+        "maksimal_tilhengervekt_kg": record.maksimal_tilhengervekt_kg,
+        "hjuldrift": record.hjuldrift,
+        "vekt_kg": record.vekt_kg,
+        "seter": record.seter,
+        "doerer": record.dører,
+        "bagasjerom_volum_l": record.bagasjerom_volum_l,
+        "farge": record.farge,
+        "fargebeskrivelse": record.fargebeskrivelse,
+        "interioerfarge": record.interiørfarge,
+        "bilen_staar_i": record.bilen_står_i,
+        "neste_eu_kontroll": record.neste_eu_kontroll,
+        "avgiftsklasse": record.avgiftsklasse,
+        "registreringsnummer": record.registreringsnummer,
+        "chassisnummer": record.chassisnummer,
+        "foerstegangsregistrert": record.førstegangsregistrert,
+        "eiere": record.eiere,
+        "garanti": record.garanti,
+        "salgsform": record.salgsform,
+        "raw_spec_json": record.specs,
+        "tire_sets": record.tire_sets,
+        "trim_level": record.trim_level,
+        "raw_description": record.raw_description,
+    }
+    
+    # Upsert ad_details
+    client.table("ad_details").upsert(data).execute()
+    
+    # Update ad_ids status
+    client.table("ad_ids").update({
+        "last_scraped": record.fetched_at.isoformat(),
+        "scrape_status": "scraped",
+    }).eq("ad_id", record.ad_id).execute()
 
 
-def mark_missing(conn: sqlite3.Connection, ad_id: str) -> None:
-    conn.execute(
-        """
-        UPDATE ad_ids
-        SET scrape_status = 'missing', last_scraped = ?
-        WHERE ad_id = ?
-        """,
-        (datetime.utcnow().isoformat(timespec="seconds"), ad_id),
-    )
+def mark_missing(client: Client, ad_id: str) -> None:
+    """Mark an ad as missing (no longer available)."""
+    now = datetime.now(timezone.utc).isoformat()
+    client.table("ad_ids").update({
+        "scrape_status": "missing",
+        "last_scraped": now,
+    }).eq("ad_id", ad_id).execute()
 
 
 def fetch_ids_for_scraping(
-    conn: sqlite3.Connection,
+    client: Client,
     limit: int,
     stale_hours: Optional[int] = None,
     random_order: bool = False,
 ) -> List[str]:
-    where_clauses = ["scrape_status IN ('pending', 'scraped')"]
-    params: List[object] = []
-
+    """Fetch ad IDs that need to be scraped."""
+    query = client.table("ad_ids").select("ad_id, last_scraped").in_("scrape_status", ["pending", "scraped"])
+    
     if stale_hours is None:
-        where_clauses.append("last_scraped IS NULL")
+        query = query.is_("last_scraped", "null")
     else:
-        threshold = datetime.utcnow() - timedelta(hours=stale_hours)
-        where_clauses.append("(last_scraped IS NULL OR last_scraped <= ?)")
-        params.append(threshold.isoformat(timespec="seconds"))
+        threshold = (datetime.now(timezone.utc) - timedelta(hours=stale_hours)).isoformat()
+        # Get records where last_scraped is null OR older than threshold
+        # Supabase doesn't support OR easily, so we'll fetch and filter
+        pass  # We'll handle this differently
+    
+    query = query.limit(limit)
+    
+    # Note: Supabase doesn't have native RANDOM() ordering via the client
+    # For random order, we'd need to use a database function or fetch more and shuffle
+    if not random_order:
+        query = query.order("last_scraped", nullsfirst=True)
+    
+    result = query.execute()
+    
+    ids = [row["ad_id"] for row in result.data]
+    
+    # If stale_hours is set, we need additional logic to include stale records
+    if stale_hours is not None:
+        threshold = datetime.now(timezone.utc) - timedelta(hours=stale_hours)
+        # Filter to include null or stale
+        filtered_ids = []
+        for row in result.data:
+            last_scraped = row.get("last_scraped")
+            if last_scraped is None:
+                filtered_ids.append(row["ad_id"])
+            else:
+                # Parse the timestamp and compare
+                try:
+                    scraped_dt = datetime.fromisoformat(last_scraped.replace("Z", "+00:00"))
+                    if scraped_dt <= threshold:
+                        filtered_ids.append(row["ad_id"])
+                except (ValueError, AttributeError):
+                    filtered_ids.append(row["ad_id"])
+        ids = filtered_ids[:limit]
+    
+    if random_order:
+        import random
+        random.shuffle(ids)
+    
+    return ids
 
-    order_by = "ORDER BY RANDOM()" if random_order else "ORDER BY COALESCE(last_scraped, '1970-01-01T00:00:00') ASC"
 
-    query = f"""
-        SELECT ad_id
-        FROM ad_ids
-        WHERE {' AND '.join(where_clauses)}
-        {order_by}
-        LIMIT ?
-    """
-    params.append(limit)
-    rows = conn.execute(query, params).fetchall()
-    return [row["ad_id"] for row in rows]
-
-
-def load_ads_dataframe(db_path: Path | str = DEFAULT_DB_PATH):
+def load_ads_dataframe():
+    """Load all ad details into a pandas DataFrame."""
     try:
-        import pandas as pd  # type: ignore
-    except ImportError as exc:  # pragma: no cover - optional dependency
+        import pandas as pd
+    except ImportError as exc:
         raise RuntimeError("pandas is required to build the analysis dataframe") from exc
-
-    with db_session(db_path) as conn:
-        initialize_schema(conn)
-        ads = pd.read_sql_query("SELECT * FROM ad_details", conn)
-        if ads.empty:
-            return ads
-        spec_dicts = ads["raw_spec_json"].apply(json.loads)
+    
+    client = _get_client()
+    
+    # Fetch all ad details
+    result = client.table("ad_details").select("*").execute()
+    
+    if not result.data:
+        return pd.DataFrame()
+    
+    ads = pd.DataFrame(result.data)
+    
+    if ads.empty:
+        return ads
+    
+    # Rename columns back to Norwegian for compatibility with existing code
+    column_mapping = {
+        "aarsavgift_info": "årsavgift_info",
+        "modellaar": "modellår",
+        "batterikapasitet_kwh": "batterikapasitet_kWh",
+        "doerer": "dører",
+        "interioerfarge": "interiørfarge",
+        "bilen_staar_i": "bilen_står_i",
+        "foerstegangsregistrert": "førstegangsregistrert",
+    }
+    ads = ads.rename(columns=column_mapping)
+    
+    # Handle raw_spec_json - it's already a dict from Supabase JSONB
+    if "raw_spec_json" in ads.columns:
+        spec_dicts = ads["raw_spec_json"].apply(
+            lambda x: x if isinstance(x, dict) else {}
+        )
         specs_df = pd.json_normalize(spec_dicts)
         specs_df.columns = [f"spec.{c}" for c in specs_df.columns]
-        return pd.concat([ads.drop(columns=["raw_spec_json"]), specs_df], axis=1)
+        ads = pd.concat([ads.drop(columns=["raw_spec_json"]), specs_df], axis=1)
+    
+    return ads

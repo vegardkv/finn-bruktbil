@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-from ..db import DEFAULT_DB_PATH
 from .config import AnalyzeConfig, load_config
-
-ENV_DB_PATH = "FINNBRUKTBIL_DB_PATH"
 
 
 def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> argparse.ArgumentParser:
@@ -34,14 +30,7 @@ def launch_streamlit(config: AnalyzeConfig) -> int:
     if config.streamlit_args:
         command.extend(config.streamlit_args)
 
-    env = os.environ.copy()
-    resolved_db = config.resolved_db_path
-    if resolved_db is not None:
-        env[ENV_DB_PATH] = str(resolved_db)
-    else:
-        env.setdefault(ENV_DB_PATH, str(DEFAULT_DB_PATH))
-
-    result = subprocess.run(command, env=env, check=False)
+    result = subprocess.run(command, check=False)
     return result.returncode
 
 

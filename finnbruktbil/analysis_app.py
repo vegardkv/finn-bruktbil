@@ -23,9 +23,9 @@ except ImportError:
 # Add parent directory to path to support both direct execution and module import
 if __name__ == "__main__" and __package__ is None:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from finnbruktbil.db import DEFAULT_DB_PATH, load_ads_dataframe
+    from finnbruktbil.db import load_ads_dataframe
 else:
-    from .db import DEFAULT_DB_PATH, load_ads_dataframe
+    from .db import load_ads_dataframe
 
 
 def _series_bounds(series, fallback_min: int = 0, fallback_max: int = 0) -> tuple[int, int]:
@@ -44,14 +44,8 @@ st.set_page_config(page_title="FINN Used Car Explorer", layout="wide")
 st.title("FINN Used Car Explorer")
 st.caption("Filter and visualize scraped data from finn.no ads.")
 
-default_db = os.environ.get("FINNBRUKTBIL_DB_PATH", str(DEFAULT_DB_PATH))
-selected_db = st.sidebar.text_input("Database path", value=default_db)
-
 try:
-    data = load_ads_dataframe(Path(selected_db))
-except FileNotFoundError:
-    st.warning("No database file found yet. Run the fetch and download scripts first.")
-    st.stop()
+    data = load_ads_dataframe()
 except RuntimeError as exc:
     st.error(str(exc))
     st.stop()

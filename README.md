@@ -10,6 +10,96 @@ pip install -e .
 
 The editable install exposes a console script named `finnbruktbil` and keeps the workspace in sync with local changes.
 
+## Supabase Setup
+
+This project uses [Supabase](https://supabase.com) as a cloud database. Follow these steps to set it up:
+
+### 1. Create a Supabase Project
+
+1. Go to [supabase.com](https://supabase.com) and create a free account
+2. Create a new project (takes ~2 minutes to provision)
+3. Note your project URL and API keys from **Project Settings → API**
+
+### 2. Create Database Tables
+
+Open the **SQL Editor** in your Supabase dashboard and run:
+
+```sql
+CREATE TABLE IF NOT EXISTS ad_ids (
+    ad_id TEXT PRIMARY KEY,
+    source_url TEXT NOT NULL,
+    fetched_by TEXT NOT NULL DEFAULT 'unknown',
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_scraped TIMESTAMPTZ,
+    scrape_status TEXT NOT NULL DEFAULT 'pending'
+);
+
+CREATE TABLE IF NOT EXISTS ad_details (
+    ad_id TEXT PRIMARY KEY REFERENCES ad_ids(ad_id) ON DELETE CASCADE,
+    fetched_at TIMESTAMPTZ NOT NULL,
+    title TEXT,
+    subtitle TEXT,
+    totalpris INTEGER,
+    omregistrering INTEGER,
+    pris_eks_omreg INTEGER,
+    aarsavgift_info TEXT,
+    merke TEXT,
+    modell TEXT,
+    modellaar INTEGER,
+    karosseri TEXT,
+    drivstoff TEXT,
+    effekt_hk INTEGER,
+    kilometerstand_km INTEGER,
+    batterikapasitet_kwh INTEGER,
+    rekkevidde_km INTEGER,
+    girkasse TEXT,
+    maksimal_tilhengervekt_kg INTEGER,
+    hjuldrift TEXT,
+    vekt_kg INTEGER,
+    seter INTEGER,
+    doerer INTEGER,
+    bagasjerom_volum_l INTEGER,
+    farge TEXT,
+    fargebeskrivelse TEXT,
+    interioerfarge TEXT,
+    bilen_staar_i TEXT,
+    neste_eu_kontroll TEXT,
+    avgiftsklasse TEXT,
+    registreringsnummer TEXT,
+    chassisnummer TEXT,
+    foerstegangsregistrert TEXT,
+    eiere INTEGER,
+    garanti TEXT,
+    salgsform TEXT,
+    raw_spec_json JSONB NOT NULL,
+    tire_sets TEXT,
+    trim_level TEXT,
+    raw_description TEXT
+);
+
+-- Create indexes for common queries
+CREATE INDEX IF NOT EXISTS idx_ad_ids_scrape_status ON ad_ids(scrape_status);
+CREATE INDEX IF NOT EXISTS idx_ad_ids_last_scraped ON ad_ids(last_scraped);
+```
+
+### 3. Configure Environment Variables
+
+Copy the example environment file and add your credentials:
+
+```shell
+cp .env.example .env
+```
+
+Edit `.env` with your Supabase credentials:
+
+```dotenv
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_KEY=your-anon-or-service-role-key
+```
+
+You can find these in your Supabase dashboard under **Project Settings → API**.
+
 ## Command-Line Workflow
 
 1. Fetch ad identifiers for a pre-filtered FINN search page:
@@ -76,7 +166,7 @@ Example `configs/analyze.json`:
 }
 ```
 
-Omit values to fall back to defaults. Set `db` in any document to point at a non-default SQLite file. The download and fetch jobs also honour the `headless` flag for the Selenium driver.
+Omit values to fall back to defaults. The download and fetch jobs also honour the `headless` flag for the Selenium driver.
 
 ## Python API
 
