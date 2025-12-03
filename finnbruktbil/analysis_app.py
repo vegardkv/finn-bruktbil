@@ -204,8 +204,8 @@ except ImportError:
     SKLEARN_AVAILABLE = False
 
 subset = subset.copy()
-subset["fetched_at_dt"] = pd.to_datetime(subset["fetched_at"], errors="coerce")
-subset["førstegangsregistrert_dt"] = pd.to_datetime(subset["førstegangsregistrert"], errors="coerce")
+subset["fetched_at_dt"] = pd.to_datetime(subset["fetched_at"], errors="coerce", utc=True)
+subset["førstegangsregistrert_dt"] = pd.to_datetime(subset["førstegangsregistrert"], errors="coerce", utc=True)
 subset["age_years"] = (subset["fetched_at_dt"] - subset["førstegangsregistrert_dt"]).dt.days / 365.25
 
 # Map tire_sets to categorical values for better display
