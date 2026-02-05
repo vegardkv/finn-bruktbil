@@ -65,14 +65,14 @@ def collect_ad_ids(driver, base_url: str, max_pages: int, limit: int) -> List[st
 def extract_ids_from_favorites_file(file_path: Path) -> List[str]:
     """Extract ad IDs from a local favorites HTML file.
     
-    The favorites HTML contains embedded JSON with items that have "itemId" fields.
+    Extracts IDs from href links: href="/123456789"
+    This works for all formats and captures ads with or without images.
     """
     html_content = file_path.read_text(encoding="utf-8")
     
-    # Look for itemId values in the embedded JSON data
-    # Pattern matches "itemId":123456789 where the number is the ad ID
-    pattern = r'"itemId"\s*:\s*(\d+)'
-    matches = re.findall(pattern, html_content)
+    # Extract IDs from href links: href="/123456789"
+    href_pattern = r'href="/(\d{9})"'
+    matches = re.findall(href_pattern, html_content)
     
     # Deduplicate while preserving order
     seen = set()
@@ -116,6 +116,7 @@ def fetch_ids_into_db(config: FetchIdsConfig) -> List[str]:
         if config.limit:
             ad_ids = ad_ids[:config.limit]
         
+        print(f"Found {len(ad_ids)} unique ad ids in favorites file.")
         if not ad_ids:
             return []
         
