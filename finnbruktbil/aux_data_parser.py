@@ -25,6 +25,9 @@ except ImportError:
     pass
 
 
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", None)
+
+
 class TireSet(str, Enum):
     """Enum for tire set options."""
     ONE_SET = "one_set"
@@ -88,7 +91,7 @@ def extract_description_from_ad(driver: WebDriver, ad_id: str) -> Optional[str]:
     return None
 
 
-def parse_aux_data_with_openai(description: str, api_key: Optional[str] = None) -> AuxData:
+def parse_aux_data_with_openai(description: str) -> AuxData:
     """Parse auxiliary data from ad description using OpenAI API.
     
     Args:
@@ -111,16 +114,14 @@ def parse_aux_data_with_openai(description: str, api_key: Optional[str] = None) 
         ) from exc
     
     # Get API key
-    if api_key is None:
-        api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
+    if not OPENAI_API_KEY:
         raise ValueError(
             "OpenAI API key must be provided either as argument or "
             "via OPENAI_API_KEY environment variable"
         )
     
     # Initialize OpenAI client
-    client = openai.OpenAI(api_key=api_key)
+    client = openai.OpenAI(api_key=OPENAI_API_KEY)
     
     # Construct the prompt
     system_prompt = """You are a helpful assistant that extracts structured information from Norwegian car advertisements.
@@ -191,7 +192,6 @@ Respond ONLY with valid JSON in this exact format:
 def parse_aux_data_from_ad(
     driver: WebDriver,
     ad_id: str,
-    api_key: Optional[str] = None
 ) -> Optional[AuxData]:
     """Extract and parse auxiliary data from a car ad.
     
@@ -210,7 +210,7 @@ def parse_aux_data_from_ad(
     if description is None:
         return None
     
-    return parse_aux_data_with_openai(description, api_key)
+    return parse_aux_data_with_openai(description)
 
 
 # Example usage
