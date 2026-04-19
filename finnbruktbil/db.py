@@ -89,7 +89,9 @@ def initialize_schema(client: Client) -> None:
         raw_spec_json JSONB NOT NULL,
         tire_sets TEXT,
         trim_level TEXT,
-        raw_description TEXT
+        raw_description TEXT,
+        sist_oppdatert TEXT,
+        solgt BOOLEAN
     );
 
     -- Create indexes for common queries
@@ -194,6 +196,9 @@ class AdRecord:
     tire_sets: Optional[str]
     trim_level: Optional[str]
     raw_description: Optional[str]
+    # Ad metadata
+    sist_oppdatert: Optional[str] = None
+    solgt: Optional[bool] = None
 
 
 def save_ad_detail(client: Client, record: AdRecord) -> None:
@@ -239,6 +244,8 @@ def save_ad_detail(client: Client, record: AdRecord) -> None:
         "tire_sets": record.tire_sets,
         "trim_level": record.trim_level,
         "raw_description": record.raw_description,
+        "sist_oppdatert": record.sist_oppdatert,
+        "solgt": record.solgt,
     }
     
     # Upsert ad_details

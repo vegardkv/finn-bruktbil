@@ -78,6 +78,41 @@ def _parse_date_string(date_str: Optional[str]) -> Optional[str]:
         return None
 
 
+_NORWEGIAN_MONTHS = {
+    "januar": 1, "februar": 2, "mars": 3, "april": 4,
+    "mai": 5, "juni": 6, "juli": 7, "august": 8,
+    "september": 9, "oktober": 10, "november": 11, "desember": 12,
+}
+
+
+def _parse_norwegian_datetime(date_str: Optional[str]) -> Optional[str]:
+    """Parse Norwegian long-form datetime (e.g. '22. oktober 2025, 16:12') to ISO format."""
+    if not date_str:
+        return None
+    try:
+        # Expected formats: "22. oktober 2025, 16:12" or "22. oktober 2025"
+        date_str = date_str.strip()
+        if "," in date_str:
+            date_part, time_part = date_str.split(",", 1)
+            time_part = time_part.strip()
+        else:
+            date_part = date_str
+            time_part = None
+
+        parts = date_part.strip().split()
+        # parts: ["22.", "oktober", "2025"]
+        day = int(parts[0].rstrip("."))
+        month = _NORWEGIAN_MONTHS.get(parts[1].lower())
+        year = int(parts[2])
+        if month is None:
+            return None
+        if time_part:
+            return f"{year:04d}-{month:02d}-{day:02d}T{time_part}"
+        return f"{year:04d}-{month:02d}-{day:02d}"
+    except (ValueError, AttributeError, IndexError):
+        return None
+
+
 # Mapping from expected field names to key_info keys
 FIELD_MAPPING = {
     "omregistrering": "Omregistrering",
@@ -164,6 +199,29 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
     if redundant_keys:
         print(f"Redundant keys for ad {ad_id}: {sorted(redundant_keys)}")
 
+    # Check for SOLGT (sold) badge
+    solgt = False
+    try:
+        for el in driver.find_elements(By.XPATH, "//*[normalize-space(text())='SOLGT']"):
+            if el.get_attribute("textContent").strip() == "SOLGT":
+                solgt = True
+                break
+    except Exception:
+        pass
+
+    # Extract "Sist oppdatert" (last modified) from the Annonseinformasjon section
+    sist_oppdatert = None
+    try:
+        label = driver.find_element(
+            By.XPATH, "//p[normalize-space(text())='Sist oppdatert']"
+        )
+        value_el = label.find_element(By.XPATH, "following-sibling::p[1]")
+        sist_oppdatert = _parse_norwegian_datetime(
+            value_el.get_attribute("textContent").strip()
+        )
+    except NoSuchElementException:
+        pass
+
     # Parse auxiliary data if enabled
     tire_sets_value = None
     trim_level_value = None
@@ -222,4 +280,6 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
         tire_sets=tire_sets_value,
         trim_level=trim_level_value,
         raw_description=raw_description_value,
+        sist_oppdatert=sist_oppdatert,
+        solgt=solgt,
     )
