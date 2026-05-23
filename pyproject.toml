@@ -18,6 +18,7 @@ dependencies = [
     "openai", # For auxiliary data parsing
     "python-dotenv", # For .env file support
     "supabase", # Cloud database
+    "requests", # For Vegvesen API lookups
 ]
 
 [project.scripts]

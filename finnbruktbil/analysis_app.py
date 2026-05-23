@@ -112,6 +112,36 @@ if trim_undetermined:
 if selected_trims:
     subset = subset[subset["trim_category"].isin(selected_trims)]
 
+# Import status filter
+st.sidebar.markdown("**Import Status**")
+import_show_imported = st.sidebar.checkbox("Imported", value=True)
+import_show_norwegian = st.sidebar.checkbox("Norwegian", value=True)
+import_show_unknown = st.sidebar.checkbox("Unknown", value=True)
+
+def categorize_imported(value):
+    if value is True:
+        return "imported"
+    elif value is False:
+        return "norwegian"
+    else:
+        return "unknown"
+
+if "imported" in subset.columns:
+    subset["import_category"] = subset["imported"].apply(categorize_imported)
+else:
+    subset["import_category"] = "unknown"
+
+selected_import_cats = []
+if import_show_imported:
+    selected_import_cats.append("imported")
+if import_show_norwegian:
+    selected_import_cats.append("norwegian")
+if import_show_unknown:
+    selected_import_cats.append("unknown")
+
+if selected_import_cats:
+    subset = subset[subset["import_category"].isin(selected_import_cats)]
+
 if subset.empty:
     st.warning("No data matches the selected filters.")
     st.stop()
@@ -123,7 +153,7 @@ st.sidebar.markdown("**Plot Customization**")
 # Get numeric columns for color and size options
 numeric_columns = subset.select_dtypes(include=[np.number]).columns.tolist()
 # Add calculated fields that will be available
-available_color_options = ["age_years", "kilometerstand_km", "totalpris", "modellår", "seter", "tire_sets_numeric"]
+available_color_options = ["age_years", "kilometerstand_km", "totalpris", "modellår", "seter", "tire_sets_numeric", "imported_numeric"]
 available_size_options = ["None"] + ["kilometerstand_km", "totalpris", "age_years", "modellår"]
 
 color_column = st.sidebar.selectbox(
@@ -137,7 +167,8 @@ color_column = st.sidebar.selectbox(
         "totalpris": "Price (NOK)",
         "modellår": "Model Year",
         "seter": "Seats",
-        "tire_sets_numeric": "Tire Sets"
+        "tire_sets_numeric": "Tire Sets",
+        "imported_numeric": "Import Status",
     }.get(x, x)
 )
 
@@ -223,6 +254,23 @@ subset["tire_sets_cat"] = subset["tire_sets"].apply(map_tire_sets)
 # Create numeric mapping for color scale: unknown=0, one_set=1, two_sets=2
 tire_sets_numeric_map = {"unknown": 0, "one_set": 1, "two_sets": 2}
 subset["tire_sets_numeric"] = subset["tire_sets_cat"].map(tire_sets_numeric_map)
+
+# Map imported to categorical and numeric values for display
+def map_import_status(value):
+    if value is True:
+        return "imported"
+    elif value is False:
+        return "norwegian"
+    else:
+        return "unknown"
+
+if "imported" in subset.columns:
+    subset["import_status_cat"] = subset["imported"].apply(map_import_status)
+else:
+    subset["import_status_cat"] = "unknown"
+# Numeric mapping: unknown=0, norwegian=1, imported=2
+import_status_numeric_map = {"unknown": 0, "norwegian": 1, "imported": 2}
+subset["imported_numeric"] = subset["import_status_cat"].map(import_status_numeric_map)
 
 # OLS Regression Model: Price = c0 + c1*mileage + c2*age
 def perform_ols_analysis(data):
@@ -334,7 +382,7 @@ if metrics is not None:
         # Prepare plot parameters
         plot_size = size_column if size_column != "None" else None
         
-        # Use discrete colors for tire_sets, continuous for others
+        # Use discrete colors for tire_sets or imported, continuous for others
         if color_column == "tire_sets_numeric":
             fig_usedness = px.scatter(
                 analysis_subset,
@@ -355,6 +403,24 @@ if metrics is not None:
                 },
                 category_orders={"tire_sets_cat": ["unknown", "one_set", "two_sets"]},
                 color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"},
+                title="Car Price vs. Combined Usedness Score"
+            )
+        elif color_column == "imported_numeric":
+            fig_usedness = px.scatter(
+                analysis_subset,
+                x="usedness",
+                y="totalpris",
+                color="import_status_cat",
+                size=plot_size,
+                hover_data=["title", "merke", "modell", "kilometerstand_km", "age_years", "import_status_cat", "import_country"],
+                labels={
+                    "usedness": "Usedness Score (0=New, 1=Most Used)",
+                    "totalpris": "Price (NOK)",
+                    "import_status_cat": "Import Status",
+                    "import_country": "Import Country",
+                },
+                category_orders={"import_status_cat": ["unknown", "norwegian", "imported"]},
+                color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"},
                 title="Car Price vs. Combined Usedness Score"
             )
         else:
@@ -423,7 +489,7 @@ with scatter_cols[0]:
     # Prepare plot parameters
     plot_size = size_column if size_column != "None" else None
     
-    # Use discrete colors for tire_sets, continuous for others
+    # Use discrete colors for tire_sets or imported, continuous for others
     if color_column == "tire_sets_numeric":
         fig_mileage = px.scatter(
             mileage_data,
@@ -443,6 +509,23 @@ with scatter_cols[0]:
             },
             category_orders={"tire_sets_cat": ["unknown", "one_set", "two_sets"]},
             color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"}
+        )
+    elif color_column == "imported_numeric":
+        fig_mileage = px.scatter(
+            mileage_data,
+            x="kilometerstand_km",
+            y="totalpris",
+            color="import_status_cat",
+            size=plot_size,
+            hover_data=["title", "merke", "modell", "førstegangsregistrert", "import_status_cat", "import_country"],
+            labels={
+                "kilometerstand_km": "Mileage (km)",
+                "totalpris": "Price (NOK)",
+                "import_status_cat": "Import Status",
+                "import_country": "Import Country",
+            },
+            category_orders={"import_status_cat": ["unknown", "norwegian", "imported"]},
+            color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"}
         )
     else:
         fig_mileage = px.scatter(
@@ -505,7 +588,7 @@ with scatter_cols[1]:
     # Prepare plot parameters
     plot_size = size_column if size_column != "None" else None
     
-    # Use discrete colors for tire_sets, continuous for others
+    # Use discrete colors for tire_sets or imported, continuous for others
     if color_column == "tire_sets_numeric":
         fig_registration = px.scatter(
             reg_data,
@@ -526,6 +609,23 @@ with scatter_cols[1]:
             },
             category_orders={"tire_sets_cat": ["unknown", "one_set", "two_sets"]},
             color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"}
+        )
+    elif color_column == "imported_numeric":
+        fig_registration = px.scatter(
+            reg_data,
+            x="førstegangsregistrert",
+            y="totalpris",
+            color="import_status_cat",
+            size=plot_size,
+            hover_data=["title", "merke", "modell", "import_status_cat", "import_country"],
+            labels={
+                "førstegangsregistrert": "First Registration",
+                "totalpris": "Price (NOK)",
+                "import_status_cat": "Import Status",
+                "import_country": "Import Country",
+            },
+            category_orders={"import_status_cat": ["unknown", "norwegian", "imported"]},
+            color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"}
         )
     else:
         fig_registration = px.scatter(
@@ -601,6 +701,8 @@ display_columns = [
     "førstegangsregistrert",
     "bilen_står_i",
     "fetched_at",
+    "imported",
+    "import_country",
 ]
 
 # Add usedness column if analysis was performed successfully
@@ -625,7 +727,8 @@ if analysis_subset is not None and "usedness" in analysis_subset.columns:
         display_subset.loc[complete_data_mask, "usedness"] = analysis_subset["usedness"].values[:len(display_subset[complete_data_mask])]
         display_columns.insert(5, "usedness")
 
+available_display_columns = [c for c in display_columns if c in display_subset.columns]
 st.dataframe(
-    display_subset[display_columns].sort_values(by="totalpris", ascending=False),
+    display_subset[available_display_columns].sort_values(by="totalpris", ascending=False),
     use_container_width=True,
 )

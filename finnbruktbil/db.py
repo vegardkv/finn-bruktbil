@@ -91,8 +91,14 @@ def initialize_schema(client: Client) -> None:
         trim_level TEXT,
         raw_description TEXT,
         sist_oppdatert TEXT,
-        solgt BOOLEAN
+        solgt BOOLEAN,
+        imported BOOLEAN,
+        import_country TEXT
     );
+
+    -- To add these columns to an existing table:
+    -- ALTER TABLE ad_details ADD COLUMN IF NOT EXISTS imported BOOLEAN;
+    -- ALTER TABLE ad_details ADD COLUMN IF NOT EXISTS import_country TEXT;
 
     -- Create indexes for common queries
     CREATE INDEX IF NOT EXISTS idx_ad_ids_scrape_status ON ad_ids(scrape_status);
@@ -199,6 +205,9 @@ class AdRecord:
     # Ad metadata
     sist_oppdatert: Optional[str] = None
     solgt: Optional[bool] = None
+    # Import status (from Vegvesen API or description analysis)
+    imported: Optional[bool] = None
+    import_country: Optional[str] = None
 
 
 def save_ad_detail(client: Client, record: AdRecord) -> None:
@@ -246,6 +255,8 @@ def save_ad_detail(client: Client, record: AdRecord) -> None:
         "raw_description": record.raw_description,
         "sist_oppdatert": record.sist_oppdatert,
         "solgt": record.solgt,
+        "imported": record.imported,
+        "import_country": record.import_country,
     }
     
     # Upsert ad_details

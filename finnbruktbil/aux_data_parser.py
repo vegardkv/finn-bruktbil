@@ -46,15 +46,20 @@ class AuxData:
         tire_sets: Whether the car comes with one or two sets of tires
         trim_level: The trim/equipment level (e.g., "GT-Line", "Premium", "Elegance")
         raw_description: The original description text that was parsed
+        imported: True if the description explicitly states the car was imported,
+            False if it explicitly states it was sold new in Norway, or None when
+            the description contains no clear evidence either way.
     """
     tire_sets: TireSet
     trim_level: Optional[str]
     raw_description: str
+    imported: Optional[bool] = None
 
     def __repr__(self) -> str:
         return (
             f"AuxData(tire_sets={self.tire_sets.value}, "
             f"trim_level={self.trim_level!r}, "
+            f"imported={self.imported!r}, "
             f"raw_description={self.raw_description[:50]!r}...)"
         )
 
@@ -137,10 +142,24 @@ Your task is to analyze the ad description and extract:
    - Return null if no trim level is mentioned or if it's unclear
    - Sometimes this is part of the model specification
 
+3. Imported: Whether the car was imported from abroad or sold new in Norway.
+   IMPORTANT — this field has strict rules to avoid false positives:
+   - Return true ONLY if the description explicitly states the car was imported
+     (e.g. "importert fra Tyskland", "bruktimportert", "bruktimport", "innført fra utlandet",
+     "tidligere utenlandsk kjennemerke", "solgt brukt fra utlandet").
+   - Return false ONLY if the description explicitly states the car was sold new in Norway
+     (e.g. "norsklevert", "solgt ny i Norge", "levert ny hos norsk forhandler",
+     "norsk bil fra ny").
+   - Return null in ALL other cases — including when the description says nothing
+     about import status. Most ads will not mention this at all.
+   - Do NOT infer import status from indirect clues such as mileage, equipment level,
+     model variant, price, or country of manufacture. Return null when in doubt.
+
 Respond ONLY with valid JSON in this exact format:
 {
     "tire_sets": "one_set" | "two_sets" | "unknown",
-    "trim_level": "string" | null
+    "trim_level": "string" | null,
+    "imported": true | false | null
 }"""
 
     user_prompt = f"""Analyze this Norwegian car ad description and extract tire sets and trim level:
@@ -173,10 +192,20 @@ Respond ONLY with valid JSON in this exact format:
         
         trim_level = result.get("trim_level")
         
+        # Extract imported: only accept explicit true/false; treat anything else as None
+        raw_imported = result.get("imported")
+        if raw_imported is True:
+            imported = True
+        elif raw_imported is False:
+            imported = False
+        else:
+            imported = None
+        
         return AuxData(
             tire_sets=tire_sets,
             trim_level=trim_level,
-            raw_description=description
+            raw_description=description,
+            imported=imported,
         )
         
     except Exception as exc:
@@ -185,7 +214,8 @@ Respond ONLY with valid JSON in this exact format:
         return AuxData(
             tire_sets=TireSet.UNKNOWN,
             trim_level=None,
-            raw_description=description
+            raw_description=description,
+            imported=None,
         )
 
 

@@ -226,6 +226,7 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
     tire_sets_value = None
     trim_level_value = None
     raw_description_value = None
+    aux_imported: Optional[bool] = None
     
     if parse_aux_data:
         try:
@@ -235,8 +236,28 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
                 tire_sets_value = aux_data.tire_sets.value
                 trim_level_value = aux_data.trim_level
                 raw_description_value = aux_data.raw_description
+                aux_imported = aux_data.imported
         except Exception as exc:
             print(f"Warning: Failed to parse auxiliary data for ad {ad_id}: {exc}")
+
+    # Determine import status:
+    # 1. Primary: Vegvesen API lookup using registration number (requires SVV_API_KEY)
+    # 2. Fallback: OpenAI description analysis (only if explicit evidence was found)
+    imported_value: Optional[bool] = None
+    import_country_value: Optional[str] = None
+
+    reg_nr = key_info.get(FIELD_MAPPING["registreringsnummer"])
+    if reg_nr:
+        try:
+            from .vegvesen import SVV_API_KEY, lookup_import_status
+            if SVV_API_KEY:
+                imported_value, import_country_value = lookup_import_status(reg_nr)
+        except Exception as exc:
+            print(f"Warning: Vegvesen lookup failed for ad {ad_id}: {exc}")
+
+    # Fall back to description analysis when the API lookup was unavailable or failed
+    if imported_value is None and aux_imported is not None:
+        imported_value = aux_imported
 
     # Map key_info to AdRecord fields
     return AdRecord(
@@ -282,4 +303,6 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
         raw_description=raw_description_value,
         sist_oppdatert=sist_oppdatert,
         solgt=solgt,
+        imported=imported_value,
+        import_country=import_country_value,
     )
