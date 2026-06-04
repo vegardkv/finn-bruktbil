@@ -35,6 +35,15 @@ class TireSet(str, Enum):
     UNKNOWN = "unknown"
 
 
+class ImportDeterminationMethod(str, Enum):
+    """How a car's import status was determined."""
+    REGISTRATION_LOOKUP = "registration_lookup"   # Vegvesen API via reg nr
+    DESCRIPTION_ANALYSIS = "description_analysis"  # OpenAI free-text analysis
+    NOT_CHECKED = "not_checked"                    # no method attempted
+    INCONCLUSIVE = "inconclusive"                  # checked but no evidence found
+    CONDITION_REPORT = "condition_report"          # (future) tilstandsrapport PDF
+
+
 @dataclass
 class AuxData:
     """Auxiliary data extracted from car ad description.
