@@ -46,11 +46,48 @@ def lookup_import_status(
           when the vehicle is imported and the API provides the information,
           otherwise ``None``.
     """
-    if not SVV_API_KEY:
-        return None, None
-
     reg = registration_number.strip().replace(" ", "")
     if not reg:
+        return None, None
+    return _lookup({"kjennemerke": reg}, reg)
+
+
+def lookup_import_status_by_vin(
+    chassis_number: str,
+) -> tuple[Optional[bool], Optional[str]]:
+    """Look up whether a car was imported using its chassis number (VIN).
+
+    Uses the ``understellsnummer`` query parameter of the same Vegvesen
+    Enkeltoppslag endpoint, which returns the identical payload shape as the
+    registration-number lookup.
+
+    Args:
+        chassis_number: The vehicle's chassis number / VIN
+            (``understellsnummer``).  Whitespace is stripped before the
+            request; no length validation is performed.
+
+    Returns:
+        The same ``(imported, import_country)`` tuple as
+        :func:`lookup_import_status`.
+    """
+    vin = chassis_number.strip().replace(" ", "")
+    if not vin:
+        return None, None
+    return _lookup({"understellsnummer": vin}, vin)
+
+
+def _lookup(
+    params: dict,
+    identifier: str,
+) -> tuple[Optional[bool], Optional[str]]:
+    """Query the Vegvesen API with the given lookup params and parse the result.
+
+    Args:
+        params: Query parameters identifying the vehicle, e.g.
+            ``{"kjennemerke": ...}`` or ``{"understellsnummer": ...}``.
+        identifier: The lookup value, used only for log messages.
+    """
+    if not SVV_API_KEY:
         return None, None
 
     try:
@@ -60,7 +97,6 @@ def lookup_import_status(
         return None, None
 
     headers = {"SVV-Authorization": f"Apikey {SVV_API_KEY}"}
-    params = {"kjennemerke": reg}
 
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
@@ -71,7 +107,7 @@ def lookup_import_status(
                 timeout=10,
             )
         except requests.RequestException as exc:
-            print(f"Warning: Vegvesen API request failed for {reg!r} (attempt {attempt}): {exc}")
+            print(f"Warning: Vegvesen API request failed for {identifier!r} (attempt {attempt}): {exc}")
             if attempt < _MAX_RETRIES:
                 time.sleep(_RETRY_DELAY_S)
             continue
@@ -85,7 +121,7 @@ def lookup_import_status(
 
         if response.status_code in (429, 500, 502, 503, 504):
             print(
-                f"Warning: Vegvesen API returned {response.status_code} for {reg!r} "
+                f"Warning: Vegvesen API returned {response.status_code} for {identifier!r} "
                 f"(attempt {attempt}/{_MAX_RETRIES})"
             )
             if attempt < _MAX_RETRIES:
@@ -95,7 +131,7 @@ def lookup_import_status(
         # Other unexpected status codes — log and give up.
         print(
             f"Warning: Vegvesen API returned unexpected status {response.status_code} "
-            f"for {reg!r}"
+            f"for {identifier!r}"
         )
         return None, None
 

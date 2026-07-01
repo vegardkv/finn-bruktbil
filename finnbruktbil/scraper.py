@@ -223,10 +223,13 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
         pass
 
     # Determine import status, setting the determination method as each step runs:
-    #   1. Primary: Vegvesen API lookup using the registration number (needs SVV_API_KEY).
-    #   2. Fallback: OpenAI description analysis, only when it finds explicit evidence.
+    #   1. Primary: Vegvesen API lookup using the chassis number / VIN (needs SVV_API_KEY);
+    #      the VIN is almost always present in the ad's key-info.
+    #   2. Secondary: Vegvesen API lookup using the registration number, only when the
+    #      VIN lookup was inconclusive.
+    #   3. Fallback: OpenAI description analysis, only when it finds explicit evidence.
     from .aux_data_parser import ImportDeterminationMethod
-    from .vegvesen import SVV_API_KEY, lookup_import_status
+    from .vegvesen import SVV_API_KEY, lookup_import_status, lookup_import_status_by_vin
 
     tire_sets_value = None
     trim_level_value = None
@@ -235,9 +238,22 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
     import_country_value: Optional[str] = None
     import_method = ImportDeterminationMethod.NOT_CHECKED
 
-    # Primary: Vegvesen reg-nr lookup.
+    # Primary: Vegvesen chassis-number (VIN) lookup.
+    chassis_nr = key_info.get(FIELD_MAPPING["chassisnummer"])
+    if chassis_nr and SVV_API_KEY:
+        try:
+            imported_value, import_country_value = lookup_import_status_by_vin(chassis_nr)
+        except Exception as exc:
+            print(f"Warning: Vegvesen VIN lookup failed for ad {ad_id}: {exc}")
+        import_method = (
+            ImportDeterminationMethod.CHASSIS_LOOKUP  # incl. 404 -> not imported
+            if imported_value is not None
+            else ImportDeterminationMethod.INCONCLUSIVE
+        )
+
+    # Secondary: Vegvesen reg-nr lookup, only if the VIN lookup was inconclusive.
     reg_nr = key_info.get(FIELD_MAPPING["registreringsnummer"])
-    if reg_nr and SVV_API_KEY:
+    if imported_value is None and reg_nr and SVV_API_KEY:
         try:
             imported_value, import_country_value = lookup_import_status(reg_nr)
         except Exception as exc:

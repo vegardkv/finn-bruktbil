@@ -37,6 +37,7 @@ class TireSet(str, Enum):
 
 class ImportDeterminationMethod(str, Enum):
     """How a car's import status was determined."""
+    CHASSIS_LOOKUP = "chassis_lookup"             # Vegvesen API via chassis nr (VIN)
     REGISTRATION_LOOKUP = "registration_lookup"   # Vegvesen API via reg nr
     DESCRIPTION_ANALYSIS = "description_analysis"  # OpenAI free-text analysis
     NOT_CHECKED = "not_checked"                    # no method attempted
