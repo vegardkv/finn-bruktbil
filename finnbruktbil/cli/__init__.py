@@ -6,7 +6,7 @@ import argparse
 import sys
 from typing import Iterable, Optional, Sequence
 
-from . import analyze, download_data, fetch_ids
+from . import analyze, download_data, fetch_ids, summarize
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -19,6 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     fetch_ids.add_parser(subparsers)
     download_data.add_parser(subparsers)
     analyze.add_parser(subparsers)
+    summarize.add_parser(subparsers)
 
     return parser
 

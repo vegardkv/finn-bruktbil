@@ -19,6 +19,7 @@ uv run cli-fetch-ids.py            # collect ad ids from a FINN search (configs/
 uv run cli-fetch-ids-favorites.py  # collect ad ids from a saved favorites HTML file (configs/fetch-favorites.json)
 uv run cli-download-data.py        # scrape ad details for stored ids (configs/download.json)
 uv run cli-analyze.py              # launch the Streamlit dashboard (configs/analyze.json)
+uv run cli-summarize.py            # summarize cars matching soft/hard constraints (configs/summarize.json)
 ```
 
 Equivalent CLI subcommands (same functions, explicit config path argument):
@@ -26,6 +27,7 @@ Equivalent CLI subcommands (same functions, explicit config path argument):
 uv run finnbruktbil fetch-ids configs/fetch.json
 uv run finnbruktbil download configs/download.json
 uv run finnbruktbil analyze configs/analyze.json
+uv run finnbruktbil summarize configs/summarize.json
 ```
 
 Run the Streamlit app directly (bypassing the CLI):
@@ -40,7 +42,8 @@ There is no test runner configured.
 The package lives under `finnbruktbil/`. The CLI (`finnbruktbil/cli/__init__.py`) wires three subcommands via argparse; each subcommand module exposes both an `add_parser` (CLI) and a plain function (Python API), so every stage is callable programmatically — see USAGE.md.
 
 **Data flow / key modules:**
-- `cli/config.py` — Pydantic models (`FetchIdsConfig`, `DownloadConfig`, `AnalyzeConfig`) and `load_config`. All runtime parameters come from JSON configs, not CLI flags.
+- `cli/config.py` — Pydantic models (`FetchIdsConfig`, `DownloadConfig`, `AnalyzeConfig`, `CarConstraints`) and `load_config`. All runtime parameters come from JSON configs, not CLI flags.
+- `cli/summarize.py` — filters `load_ads_dataframe()` to a single `merke`/`modell`, drops cars failing any **hard** constraint, scores survivors by number of **soft** constraints met, and prints all-time feasible / currently-available (`solgt is False`) counts plus a score-sorted list. Each constraint has an explicit `_eval_*` evaluator registered in `CONSTRAINT_EVALUATORS`; missing data fails the constraint. Add a constraint = new `CarConstraints` field + `_eval_*` fn + one registry line.
 - `browser.py` — Selenium Chrome driver factory (`create_driver`) and helpers (`wait_for_elements`, `polite_delay`). Tries a system `chromedriver` first, then falls back to `webdriver-manager`, and uses a system `chromium` binary when present (important for the devcontainer / CI).
 - `cli/fetch_ids.py` — two id-collection modes: scrape a FINN search URL page-by-page (`base_url`), or regex-extract 9-digit ids from a locally saved favorites HTML file (`favorites_file`). Persists via `upsert_ad_ids`.
 - `scraper.py` — `scrape_ad` loads an ad page and extracts the `key-info-section` `<dl>` pairs, mapping Norwegian labels to `AdRecord` fields via `FIELD_MAPPING`. Returns `None` when the ad is gone (downloader then marks it `missing`). Logs missing/redundant keys to help keep `FIELD_MAPPING` in sync with FINN's markup.
