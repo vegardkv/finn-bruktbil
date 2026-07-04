@@ -169,7 +169,7 @@ class SummaryResult:
     model_count: int  # cars found for the requested make/model
     constraint_stats: list[ConstraintStat]
     feasible_sorted: list[tuple["pd.Series", int]]  # all time, (car, score) desc by score
-    available_sorted: list[tuple["pd.Series", int]]  # currently available (solgt is False)
+    available_sorted: list[tuple["pd.Series", int]]  # currently available (status == "available")
 
 
 def summarize_cars(config: CarConstraints) -> SummaryResult:
@@ -200,7 +200,7 @@ def summarize_cars(config: CarConstraints) -> SummaryResult:
             feasible.append((car, score))
 
     feasible.sort(key=lambda cs: cs[1], reverse=True)
-    available = [(car, score) for car, score in feasible if car.get("solgt") is False]
+    available = [(car, score) for car, score in feasible if car.get("status") == "available"]
 
     constraint_stats = [
         ConstraintStat(field, ctype, value, tallies[field]["satisfied"], tallies[field]["missing"])

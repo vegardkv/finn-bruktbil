@@ -209,6 +209,19 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
     except Exception:
         pass
 
+    # An ad that has been made inactive (sold or taken off the market by the
+    # seller) still renders its title, but shows a banner: "Denne annonsen er
+    # ikke lenger tilgjengelig". FINN often flips ads straight to inactive
+    # without ever showing the SOLGT badge, so treat inactive as sold.
+    if not solgt:
+        try:
+            if driver.find_elements(
+                By.XPATH, "//*[contains(text(), 'ikke lenger tilgjengelig')]"
+            ):
+                solgt = True
+        except Exception:
+            pass
+
     # Extract "Sist oppdatert" (last modified) from the Annonseinformasjon section
     sist_oppdatert = None
     try:

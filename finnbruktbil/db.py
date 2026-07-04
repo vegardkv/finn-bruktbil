@@ -337,6 +337,18 @@ def fetch_ids_for_scraping(
     return ids
 
 
+def _derive_status(solgt) -> str:
+    """Derive an availability status from the ``solgt`` flag.
+
+    The scraper sets ``solgt`` for both SOLGT-badged and inactive/removed ads
+    (see scraper.py), so this single flag captures both. ``solgt`` may be a
+    Python/numpy bool, ``None``, or ``NaN`` (unknown).
+    """
+    if solgt is None or solgt != solgt:  # None or NaN
+        return "unknown"
+    return "sold" if solgt else "available"
+
+
 def load_ads_dataframe():
     """Load all ad details into a pandas DataFrame."""
     try:
@@ -368,7 +380,12 @@ def load_ads_dataframe():
         "foerstegangsregistrert": "førstegangsregistrert",
     }
     ads = ads.rename(columns=column_mapping)
-    
+
+    # Derive a single availability status from the solgt flag (which the scraper
+    # sets for both SOLGT-badged and inactive ads).
+    solgt_series = ads["solgt"] if "solgt" in ads.columns else pd.Series([None] * len(ads))
+    ads["status"] = [_derive_status(solgt) for solgt in solgt_series]
+
     # Handle raw_spec_json - it's already a dict from Supabase JSONB
     if "raw_spec_json" in ads.columns:
         spec_dicts = ads["raw_spec_json"].apply(

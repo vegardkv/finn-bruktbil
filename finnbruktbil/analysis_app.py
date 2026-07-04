@@ -153,7 +153,7 @@ st.sidebar.markdown("**Plot Customization**")
 # Get numeric columns for color and size options
 numeric_columns = subset.select_dtypes(include=[np.number]).columns.tolist()
 # Add calculated fields that will be available
-available_color_options = ["age_years", "kilometerstand_km", "totalpris", "modellår", "seter", "tire_sets_numeric", "imported_numeric", "solgt_numeric"]
+available_color_options = ["age_years", "kilometerstand_km", "totalpris", "modellår", "seter", "tire_sets_numeric", "imported_numeric", "status_numeric"]
 available_size_options = ["None"] + ["kilometerstand_km", "totalpris", "age_years", "modellår"]
 
 color_column = st.sidebar.selectbox(
@@ -169,7 +169,7 @@ color_column = st.sidebar.selectbox(
         "seter": "Seats",
         "tire_sets_numeric": "Tire Sets",
         "imported_numeric": "Import Status",
-        "solgt_numeric": "Sold Status",
+        "status_numeric": "Status",
     }.get(x, x)
 )
 
@@ -223,9 +223,9 @@ if year_min < year_max:
 else:
     st.sidebar.text(f"Model year: {year_min if year_min > 1900 else 'N/A'}")
 
-if "solgt" in subset.columns:
-    available_count = int(subset["solgt"].eq(False).sum())
-    sold_count = int(subset["solgt"].eq(True).sum())
+if "status" in subset.columns:
+    available_count = int(subset["status"].eq("available").sum())
+    sold_count = int(subset["status"].eq("sold").sum())
     unknown_count = len(subset) - available_count - sold_count
 else:
     available_count = sold_count = 0
@@ -285,22 +285,13 @@ else:
 import_status_numeric_map = {"unknown": 0, "norwegian": 1, "imported": 2}
 subset["imported_numeric"] = subset["import_status_cat"].map(import_status_numeric_map)
 
-# Map solgt (sold) to categorical and numeric values for display
-def map_solgt(value):
-    if value is True:
-        return "sold"
-    elif value is False:
-        return "available"
-    else:
-        return "unknown"
-
-if "solgt" in subset.columns:
-    subset["solgt_cat"] = subset["solgt"].apply(map_solgt)
-else:
-    subset["solgt_cat"] = "unknown"
+# Availability status (available / sold / unknown). "sold" already folds in
+# inactive/removed ads (see db._derive_status).
+if "status" not in subset.columns:
+    subset["status"] = "unknown"
 # Numeric mapping: unknown=0, available=1, sold=2
-solgt_numeric_map = {"unknown": 0, "available": 1, "sold": 2}
-subset["solgt_numeric"] = subset["solgt_cat"].map(solgt_numeric_map)
+status_numeric_map = {"unknown": 0, "available": 1, "sold": 2}
+subset["status_numeric"] = subset["status"].map(status_numeric_map).fillna(0).astype(int)
 
 # OLS Regression Model: Price = c0 + c1*mileage + c2*age
 def perform_ols_analysis(data):
@@ -453,20 +444,20 @@ if metrics is not None:
                 color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"},
                 title="Car Price vs. Combined Usedness Score"
             )
-        elif color_column == "solgt_numeric":
+        elif color_column == "status_numeric":
             fig_usedness = px.scatter(
                 analysis_subset,
                 x="usedness",
                 y="totalpris",
-                color="solgt_cat",
+                color="status",
                 size=plot_size,
-                hover_data=["title", "merke", "modell", "kilometerstand_km", "age_years", "solgt_cat"],
+                hover_data=["title", "merke", "modell", "kilometerstand_km", "age_years", "status"],
                 labels={
                     "usedness": "Usedness Score (0=New, 1=Most Used)",
                     "totalpris": "Price (NOK)",
-                    "solgt_cat": "Sold Status",
+                    "status": "Status",
                 },
-                category_orders={"solgt_cat": ["unknown", "available", "sold"]},
+                category_orders={"status": ["unknown", "available", "sold"]},
                 color_discrete_map={"unknown": "gray", "available": "seagreen", "sold": "firebrick"},
                 title="Car Price vs. Combined Usedness Score"
             )
@@ -574,20 +565,20 @@ with scatter_cols[0]:
             category_orders={"import_status_cat": ["unknown", "norwegian", "imported"]},
             color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"}
         )
-    elif color_column == "solgt_numeric":
+    elif color_column == "status_numeric":
         fig_mileage = px.scatter(
             mileage_data,
             x="kilometerstand_km",
             y="totalpris",
-            color="solgt_cat",
+            color="status",
             size=plot_size,
-            hover_data=["title", "merke", "modell", "førstegangsregistrert", "solgt_cat"],
+            hover_data=["title", "merke", "modell", "førstegangsregistrert", "status"],
             labels={
                 "kilometerstand_km": "Mileage (km)",
                 "totalpris": "Price (NOK)",
-                "solgt_cat": "Sold Status",
+                "status": "Status",
             },
-            category_orders={"solgt_cat": ["unknown", "available", "sold"]},
+            category_orders={"status": ["unknown", "available", "sold"]},
             color_discrete_map={"unknown": "gray", "available": "seagreen", "sold": "firebrick"}
         )
     else:
@@ -690,20 +681,20 @@ with scatter_cols[1]:
             category_orders={"import_status_cat": ["unknown", "norwegian", "imported"]},
             color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"}
         )
-    elif color_column == "solgt_numeric":
+    elif color_column == "status_numeric":
         fig_registration = px.scatter(
             reg_data,
             x="førstegangsregistrert",
             y="totalpris",
-            color="solgt_cat",
+            color="status",
             size=plot_size,
-            hover_data=["title", "merke", "modell", "solgt_cat"],
+            hover_data=["title", "merke", "modell", "status"],
             labels={
                 "førstegangsregistrert": "First Registration",
                 "totalpris": "Price (NOK)",
-                "solgt_cat": "Sold Status",
+                "status": "Status",
             },
-            category_orders={"solgt_cat": ["unknown", "available", "sold"]},
+            category_orders={"status": ["unknown", "available", "sold"]},
             color_discrete_map={"unknown": "gray", "available": "seagreen", "sold": "firebrick"}
         )
     else:
