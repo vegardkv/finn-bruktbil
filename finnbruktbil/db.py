@@ -16,6 +16,21 @@ load_dotenv()
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
+# DB (ASCII) column name -> in-memory Norwegian column name. Single source of truth
+# for both the write path (save_ad_detail) and read path (load_ads_dataframe). Only
+# columns whose Supabase (ASCII) name differs from the Norwegian AdRecord name are
+# listed; all others map to themselves.
+ASCII_TO_NORWEGIAN = {
+    "aarsavgift_info": "årsavgift_info",
+    "modellaar": "modellår",
+    "batterikapasitet_kwh": "batterikapasitet_kWh",
+    "doerer": "dører",
+    "interioerfarge": "interiørfarge",
+    "bilen_staar_i": "bilen_står_i",
+    "foerstegangsregistrert": "førstegangsregistrert",
+}
+NORWEGIAN_TO_ASCII = {v: k for k, v in ASCII_TO_NORWEGIAN.items()}
+
 
 def _get_client() -> Client:
     """Create and return a Supabase client."""
@@ -215,7 +230,12 @@ class AdRecord:
 
 
 def save_ad_detail(client: Client, record: AdRecord) -> None:
-    """Save or update an ad detail record."""
+    """Save or update an ad detail record.
+
+    Maps Norwegian ``AdRecord`` attributes to ASCII Supabase columns. The canonical
+    name map is ``ASCII_TO_NORWEGIAN`` (used in reverse on the read path); keep any
+    diacritic-named column added here in sync with that mapping.
+    """
     data = {
         "ad_id": record.ad_id,
         "fetched_at": record.fetched_at.isoformat(),
@@ -349,50 +369,63 @@ def _derive_status(solgt) -> str:
     return "sold" if solgt else "available"
 
 
+def _rename_to_norwegian(ads):
+    """Rename ASCII Supabase columns back to the Norwegian names the analysis code
+    expects, using the shared ``ASCII_TO_NORWEGIAN`` mapping."""
+    return ads.rename(columns=ASCII_TO_NORWEGIAN)
+
+
+def _add_status(ads):
+    """Add a derived ``status`` column (available/sold/unknown) from the ``solgt``
+    flag, which the scraper sets for both SOLGT-badged and inactive ads."""
+    import pandas as pd
+
+    solgt_series = ads["solgt"] if "solgt" in ads.columns else pd.Series([None] * len(ads))
+    ads["status"] = [_derive_status(solgt) for solgt in solgt_series]
+    return ads
+
+
+def _flatten_specs(ads):
+    """Flatten the ``raw_spec_json`` JSONB column (a dict per row) into ``spec.*``
+    columns and drop the original column."""
+    import pandas as pd
+
+    if "raw_spec_json" not in ads.columns:
+        return ads
+
+    spec_dicts = ads["raw_spec_json"].apply(lambda x: x if isinstance(x, dict) else {})
+    specs_df = pd.json_normalize(spec_dicts)
+    specs_df.columns = [f"spec.{c}" for c in specs_df.columns]
+    return pd.concat([ads.drop(columns=["raw_spec_json"]), specs_df], axis=1)
+
+
 def load_ads_dataframe():
-    """Load all ad details into a pandas DataFrame."""
+    """Load all ad details into a pandas DataFrame.
+
+    Reads the raw ``ad_details`` rows and applies the client-side transforms the
+    analysis code relies on: rename ASCII columns to Norwegian, derive ``status``,
+    and flatten ``raw_spec_json`` into ``spec.*`` columns.
+    """
     try:
         import pandas as pd
     except ImportError as exc:
         raise RuntimeError("pandas is required to build the analysis dataframe") from exc
-    
+
     client = _get_client()
-    
+
     # Fetch all ad details
     result = client.table("ad_details").select("*").execute()
-    
+
     if not result.data:
         return pd.DataFrame()
-    
+
     ads = pd.DataFrame(result.data)
-    
+
     if ads.empty:
         return ads
-    
-    # Rename columns back to Norwegian for compatibility with existing code
-    column_mapping = {
-        "aarsavgift_info": "årsavgift_info",
-        "modellaar": "modellår",
-        "batterikapasitet_kwh": "batterikapasitet_kWh",
-        "doerer": "dører",
-        "interioerfarge": "interiørfarge",
-        "bilen_staar_i": "bilen_står_i",
-        "foerstegangsregistrert": "førstegangsregistrert",
-    }
-    ads = ads.rename(columns=column_mapping)
 
-    # Derive a single availability status from the solgt flag (which the scraper
-    # sets for both SOLGT-badged and inactive ads).
-    solgt_series = ads["solgt"] if "solgt" in ads.columns else pd.Series([None] * len(ads))
-    ads["status"] = [_derive_status(solgt) for solgt in solgt_series]
+    ads = _rename_to_norwegian(ads)
+    ads = _add_status(ads)
+    ads = _flatten_specs(ads)
 
-    # Handle raw_spec_json - it's already a dict from Supabase JSONB
-    if "raw_spec_json" in ads.columns:
-        spec_dicts = ads["raw_spec_json"].apply(
-            lambda x: x if isinstance(x, dict) else {}
-        )
-        specs_df = pd.json_normalize(spec_dicts)
-        specs_df.columns = [f"spec.{c}" for c in specs_df.columns]
-        ads = pd.concat([ads.drop(columns=["raw_spec_json"]), specs_df], axis=1)
-    
     return ads
