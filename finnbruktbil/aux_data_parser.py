@@ -114,13 +114,12 @@ def parse_aux_data_with_openai(description: str) -> AuxData:
 
     Args:
         description: The ad description text to parse
-        api_key: OpenAI API key. If None, reads from OPENAI_API_KEY environment variable
 
     Returns:
         AuxData object with parsed information
 
     Raises:
-        ValueError: If API key is not provided and not found in environment
+        ValueError: If OPENAI_API_KEY is not set in the environment
         ImportError: If openai package is not installed
     """
     try:
@@ -132,9 +131,7 @@ def parse_aux_data_with_openai(description: str) -> AuxData:
 
     # Get API key
     if not OPENAI_API_KEY:
-        raise ValueError(
-            "OpenAI API key must be provided either as argument or via OPENAI_API_KEY environment variable"
-        )
+        raise ValueError("OpenAI API key must be set via the OPENAI_API_KEY environment variable")
 
     # Initialize OpenAI client
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
@@ -241,7 +238,6 @@ def parse_aux_data_from_ad(
     Args:
         driver: Selenium WebDriver with the ad page loaded
         ad_id: The FINN ad ID
-        api_key: OpenAI API key (optional, reads from env if not provided)
 
     Returns:
         AuxData object if description was found and parsed, None otherwise
