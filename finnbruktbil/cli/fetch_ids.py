@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from selenium.webdriver.common.by import By
 
 from ..browser import create_driver, polite_delay, wait_for_elements
-from ..db import db_session, initialize_schema, upsert_ad_ids
+from ..db import db_session, upsert_ad_ids
 from .config import FetchIdsConfig, load_config
 
 RESULT_SELECTOR = "a.sf-search-ad-link"
@@ -101,9 +101,6 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
 
 def fetch_ids_into_db(config: FetchIdsConfig) -> list[str]:
     """Fetch ad identifiers from a FINN search URL or favorites file and persist them."""
-
-    with db_session() as client:
-        initialize_schema(client)
 
     # Mode 1: Parse local favorites HTML file
     if config.favorites_file:

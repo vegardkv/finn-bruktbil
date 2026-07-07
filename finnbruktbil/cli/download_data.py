@@ -9,7 +9,6 @@ from ..browser import create_driver, polite_delay
 from ..db import (
     db_session,
     fetch_ids_for_scraping,
-    initialize_schema,
     mark_missing,
     save_ad_detail,
 )
@@ -40,7 +39,6 @@ def download_ads(config: DownloadConfig) -> tuple[int, int]:
     """
 
     with db_session() as client:
-        initialize_schema(client)
         target_ids: list[str] = fetch_ids_for_scraping(
             client,
             limit=config.limit,
