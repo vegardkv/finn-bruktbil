@@ -312,46 +312,25 @@ def fetch_ids_for_scraping(
     stale_hours: int | None = None,
     random_order: bool = False,
 ) -> list[str]:
-    """Fetch ad IDs that need to be scraped."""
-    query = client.table("ad_ids").select("ad_id, last_scraped").in_("scrape_status", ["pending", "scraped"])
+    """Fetch ad IDs that need to be scraped.
+
+    With ``stale_hours`` set, ids whose ``last_scraped`` is null or older than
+    the threshold qualify; otherwise only never-scraped ids do.
+    """
+    query = client.table("ad_ids").select("ad_id").in_("scrape_status", ["pending", "scraped"])
 
     if stale_hours is None:
         query = query.is_("last_scraped", "null")
     else:
         threshold = (datetime.now(UTC) - timedelta(hours=stale_hours)).isoformat()
-        # Get records where last_scraped is null OR older than threshold
-        # Supabase doesn't support OR easily, so we'll fetch and filter
-        pass  # We'll handle this differently
+        query = query.or_(f"last_scraped.is.null,last_scraped.lte.{threshold}")
 
-    query = query.limit(limit)
-
-    # Note: Supabase doesn't have native RANDOM() ordering via the client
-    # For random order, we'd need to use a database function or fetch more and shuffle
-    if not random_order:
-        query = query.order("last_scraped", nullsfirst=True)
-
-    result = query.execute()
+    # Never-scraped ids first, then oldest-scraped. Supabase has no native
+    # RANDOM() ordering via the client, so random_order only shuffles within
+    # the fetched page.
+    result = query.order("last_scraped", nullsfirst=True).limit(limit).execute()
 
     ids = [row["ad_id"] for row in result.data]
-
-    # If stale_hours is set, we need additional logic to include stale records
-    if stale_hours is not None:
-        threshold = datetime.now(UTC) - timedelta(hours=stale_hours)
-        # Filter to include null or stale
-        filtered_ids = []
-        for row in result.data:
-            last_scraped = row.get("last_scraped")
-            if last_scraped is None:
-                filtered_ids.append(row["ad_id"])
-            else:
-                # Parse the timestamp and compare
-                try:
-                    scraped_dt = datetime.fromisoformat(last_scraped.replace("Z", "+00:00"))
-                    if scraped_dt <= threshold:
-                        filtered_ids.append(row["ad_id"])
-                except (ValueError, AttributeError):
-                    filtered_ids.append(row["ad_id"])
-        ids = filtered_ids[:limit]
 
     if random_order:
         import random
