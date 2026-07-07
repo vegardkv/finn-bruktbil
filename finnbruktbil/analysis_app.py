@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -40,6 +41,85 @@ def _series_bounds(series, fallback_min: int = 0, fallback_max: int = 0) -> tupl
     if lower > upper:
         lower, upper = upper, lower
     return lower, upper
+
+
+# Shared axis/hover labels for all plots; plotly only applies the entries whose
+# columns are actually in use.
+AXIS_LABELS = {
+    "usedness": "Usedness Score (0=New, 1=Most Used)",
+    "totalpris": "Price (NOK)",
+    "age_years": "Age (years)",
+    "kilometerstand_km": "Mileage (km)",
+    "modellår": "Model Year",
+    "seter": "Seats",
+    "førstegangsregistrert": "First Registration",
+    "tire_sets_numeric": "Tire Sets",
+    "tire_sets_cat": "Tire Sets",
+    "import_status_cat": "Import Status",
+    "import_country": "Import Country",
+    "status": "Status",
+}
+
+# Discrete color modes keyed by the sidebar's "Color by" option: which categorical
+# column to color by, its extra hover columns, category order, and color map.
+# Any other option colors by that column directly on a continuous scale.
+DISCRETE_COLOR_MODES = {
+    "tire_sets_numeric": {
+        "column": "tire_sets_cat",
+        "hover": ["tire_sets_cat"],
+        "category_order": ["unknown", "one_set", "two_sets"],
+        "color_map": {"unknown": "gray", "one_set": "orange", "two_sets": "green"},
+    },
+    "imported_numeric": {
+        "column": "import_status_cat",
+        "hover": ["import_status_cat", "import_country"],
+        "category_order": ["unknown", "norwegian", "imported"],
+        "color_map": {"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"},
+    },
+    "status_numeric": {
+        "column": "status",
+        "hover": ["status"],
+        "category_order": ["unknown", "available", "sold"],
+        "color_map": {"unknown": "gray", "available": "seagreen", "sold": "firebrick"},
+    },
+}
+
+
+class PlotOptions(NamedTuple):
+    """The sidebar's plot-customization selections, passed to each plot builder."""
+
+    color_column: str
+    size_column: str
+
+
+def make_price_scatter(df, x, opts: PlotOptions, extra_hover, continuous_scale="viridis"):
+    """Build a price scatter plot, encapsulating the discrete/continuous
+    color-mode branching shared by the three plot sections."""
+    kwargs = {}
+    mode = DISCRETE_COLOR_MODES.get(opts.color_column)
+    if mode is not None:
+        color = mode["column"]
+        mode_hover = mode["hover"]
+        kwargs["category_orders"] = {mode["column"]: mode["category_order"]}
+        kwargs["color_discrete_map"] = mode["color_map"]
+    else:
+        color = opts.color_column
+        mode_hover = ["tire_sets_cat"]
+        kwargs["color_continuous_scale"] = continuous_scale
+
+    fig = px.scatter(
+        df,
+        x=x,
+        y="totalpris",
+        color=color,
+        size=opts.size_column if opts.size_column != "None" else None,
+        hover_data=["title", "merke", "modell", *extra_hover, *mode_hover],
+        labels=AXIS_LABELS,
+        **kwargs,
+    )
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
+    return fig
 
 
 st.set_page_config(page_title="FINN Used Car Explorer", layout="wide")
@@ -202,6 +282,8 @@ size_column = st.sidebar.selectbox(
         "modellår": "Model Year",
     }.get(x, x),
 )
+
+plot_opts = PlotOptions(color_column=color_column, size_column=size_column)
 
 price_min, price_max = _series_bounds(subset["totalpris"], 0, 0)
 if price_min < price_max:
@@ -404,96 +486,13 @@ if metrics is not None:
     if analysis_subset is not None:
         st.subheader("Price vs. Usedness Score")
 
-        # Prepare plot parameters
-        plot_size = size_column if size_column != "None" else None
-
-        # Use discrete colors for tire_sets or imported, continuous for others
-        if color_column == "tire_sets_numeric":
-            fig_usedness = px.scatter(
-                analysis_subset,
-                x="usedness",
-                y="totalpris",
-                color="tire_sets_cat",
-                size=plot_size,
-                hover_data=["title", "merke", "modell", "kilometerstand_km", "age_years", "tire_sets_cat"],
-                labels={
-                    "usedness": "Usedness Score (0=New, 1=Most Used)",
-                    "totalpris": "Price (NOK)",
-                    "age_years": "Age (years)",
-                    "kilometerstand_km": "Mileage (km)",
-                    "modellår": "Model Year",
-                    "seter": "Seats",
-                    "tire_sets_numeric": "Tire Sets",
-                    "tire_sets_cat": "Tire Sets",
-                },
-                category_orders={"tire_sets_cat": ["unknown", "one_set", "two_sets"]},
-                color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"},
-                title="Car Price vs. Combined Usedness Score",
-            )
-        elif color_column == "imported_numeric":
-            fig_usedness = px.scatter(
-                analysis_subset,
-                x="usedness",
-                y="totalpris",
-                color="import_status_cat",
-                size=plot_size,
-                hover_data=[
-                    "title",
-                    "merke",
-                    "modell",
-                    "kilometerstand_km",
-                    "age_years",
-                    "import_status_cat",
-                    "import_country",
-                ],
-                labels={
-                    "usedness": "Usedness Score (0=New, 1=Most Used)",
-                    "totalpris": "Price (NOK)",
-                    "import_status_cat": "Import Status",
-                    "import_country": "Import Country",
-                },
-                category_orders={"import_status_cat": ["unknown", "norwegian", "imported"]},
-                color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"},
-                title="Car Price vs. Combined Usedness Score",
-            )
-        elif color_column == "status_numeric":
-            fig_usedness = px.scatter(
-                analysis_subset,
-                x="usedness",
-                y="totalpris",
-                color="status",
-                size=plot_size,
-                hover_data=["title", "merke", "modell", "kilometerstand_km", "age_years", "status"],
-                labels={
-                    "usedness": "Usedness Score (0=New, 1=Most Used)",
-                    "totalpris": "Price (NOK)",
-                    "status": "Status",
-                },
-                category_orders={"status": ["unknown", "available", "sold"]},
-                color_discrete_map={"unknown": "gray", "available": "seagreen", "sold": "firebrick"},
-                title="Car Price vs. Combined Usedness Score",
-            )
-        else:
-            fig_usedness = px.scatter(
-                analysis_subset,
-                x="usedness",
-                y="totalpris",
-                color=color_column,
-                size=plot_size,
-                hover_data=["title", "merke", "modell", "kilometerstand_km", "age_years", "tire_sets_cat"],
-                labels={
-                    "usedness": "Usedness Score (0=New, 1=Most Used)",
-                    "totalpris": "Price (NOK)",
-                    "age_years": "Age (years)",
-                    "kilometerstand_km": "Mileage (km)",
-                    "modellår": "Model Year",
-                    "seter": "Seats",
-                    "tire_sets_numeric": "Tire Sets",
-                    "tire_sets_cat": "Tire Sets",
-                },
-                color_continuous_scale="viridis",
-                title="Car Price vs. Combined Usedness Score",
-            )
+        fig_usedness = make_price_scatter(
+            analysis_subset,
+            x="usedness",
+            opts=plot_opts,
+            extra_hover=["kilometerstand_km", "age_years"],
+        )
+        fig_usedness.update_layout(title="Car Price vs. Combined Usedness Score")
 
         # Add regression line: Price = c0 + usedness (perfectly straight line)
         # Since usedness = c1 * mileage + c2 * age, this is the OLS prediction
@@ -512,8 +511,6 @@ if metrics is not None:
             )
         )
 
-        fig_usedness.update_xaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
-        fig_usedness.update_yaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
         st.plotly_chart(fig_usedness, use_container_width=True)
 
         # Add correlation info
@@ -538,82 +535,12 @@ with scatter_cols[0]:
     st.subheader("Price vs. Mileage")
     mileage_data = subset.dropna(subset=["kilometerstand_km", "totalpris", "age_years"])
 
-    # Prepare plot parameters
-    plot_size = size_column if size_column != "None" else None
-
-    # Use discrete colors for tire_sets or imported, continuous for others
-    if color_column == "tire_sets_numeric":
-        fig_mileage = px.scatter(
-            mileage_data,
-            x="kilometerstand_km",
-            y="totalpris",
-            color="tire_sets_cat",
-            size=plot_size,
-            hover_data=["title", "merke", "modell", "førstegangsregistrert", "tire_sets_cat"],
-            labels={
-                "kilometerstand_km": "Mileage (km)",
-                "totalpris": "Price (NOK)",
-                "age_years": "Age (years)",
-                "modellår": "Model Year",
-                "seter": "Seats",
-                "tire_sets_numeric": "Tire Sets",
-                "tire_sets_cat": "Tire Sets",
-            },
-            category_orders={"tire_sets_cat": ["unknown", "one_set", "two_sets"]},
-            color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"},
-        )
-    elif color_column == "imported_numeric":
-        fig_mileage = px.scatter(
-            mileage_data,
-            x="kilometerstand_km",
-            y="totalpris",
-            color="import_status_cat",
-            size=plot_size,
-            hover_data=["title", "merke", "modell", "førstegangsregistrert", "import_status_cat", "import_country"],
-            labels={
-                "kilometerstand_km": "Mileage (km)",
-                "totalpris": "Price (NOK)",
-                "import_status_cat": "Import Status",
-                "import_country": "Import Country",
-            },
-            category_orders={"import_status_cat": ["unknown", "norwegian", "imported"]},
-            color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"},
-        )
-    elif color_column == "status_numeric":
-        fig_mileage = px.scatter(
-            mileage_data,
-            x="kilometerstand_km",
-            y="totalpris",
-            color="status",
-            size=plot_size,
-            hover_data=["title", "merke", "modell", "førstegangsregistrert", "status"],
-            labels={
-                "kilometerstand_km": "Mileage (km)",
-                "totalpris": "Price (NOK)",
-                "status": "Status",
-            },
-            category_orders={"status": ["unknown", "available", "sold"]},
-            color_discrete_map={"unknown": "gray", "available": "seagreen", "sold": "firebrick"},
-        )
-    else:
-        fig_mileage = px.scatter(
-            mileage_data,
-            x="kilometerstand_km",
-            y="totalpris",
-            color=color_column,
-            size=plot_size,
-            hover_data=["title", "merke", "modell", "førstegangsregistrert", "tire_sets_cat"],
-            labels={
-                "kilometerstand_km": "Mileage (km)",
-                "totalpris": "Price (NOK)",
-                "age_years": "Age (years)",
-                "modellår": "Model Year",
-                "seter": "Seats",
-                "tire_sets_numeric": "Tire Sets",
-                "tire_sets_cat": "Tire Sets",
-            },
-            color_continuous_scale="viridis",
-        )
+    fig_mileage = make_price_scatter(
+        mileage_data,
+        x="kilometerstand_km",
+        opts=plot_opts,
+        extra_hover=["førstegangsregistrert"],
+    )
 
     # Add regression line
     if len(mileage_data) > 1:
@@ -647,92 +574,19 @@ with scatter_cols[0]:
             )
         )
 
-    fig_mileage.update_xaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
-    fig_mileage.update_yaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
     st.plotly_chart(fig_mileage, use_container_width=True)
 
 with scatter_cols[1]:
     st.subheader("Price vs. Registration Date")
     reg_data = subset.dropna(subset=["førstegangsregistrert", "totalpris"])
 
-    # Prepare plot parameters
-    plot_size = size_column if size_column != "None" else None
-
-    # Use discrete colors for tire_sets or imported, continuous for others
-    if color_column == "tire_sets_numeric":
-        fig_registration = px.scatter(
-            reg_data,
-            x="førstegangsregistrert",
-            y="totalpris",
-            color="tire_sets_cat",
-            size=plot_size,
-            hover_data=["title", "merke", "modell", "tire_sets_cat"],
-            labels={
-                "førstegangsregistrert": "First Registration",
-                "totalpris": "Price (NOK)",
-                "kilometerstand_km": "Mileage (km)",
-                "age_years": "Age (years)",
-                "modellår": "Model Year",
-                "seter": "Seats",
-                "tire_sets_numeric": "Tire Sets",
-                "tire_sets_cat": "Tire Sets",
-            },
-            category_orders={"tire_sets_cat": ["unknown", "one_set", "two_sets"]},
-            color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"},
-        )
-    elif color_column == "imported_numeric":
-        fig_registration = px.scatter(
-            reg_data,
-            x="førstegangsregistrert",
-            y="totalpris",
-            color="import_status_cat",
-            size=plot_size,
-            hover_data=["title", "merke", "modell", "import_status_cat", "import_country"],
-            labels={
-                "førstegangsregistrert": "First Registration",
-                "totalpris": "Price (NOK)",
-                "import_status_cat": "Import Status",
-                "import_country": "Import Country",
-            },
-            category_orders={"import_status_cat": ["unknown", "norwegian", "imported"]},
-            color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"},
-        )
-    elif color_column == "status_numeric":
-        fig_registration = px.scatter(
-            reg_data,
-            x="førstegangsregistrert",
-            y="totalpris",
-            color="status",
-            size=plot_size,
-            hover_data=["title", "merke", "modell", "status"],
-            labels={
-                "førstegangsregistrert": "First Registration",
-                "totalpris": "Price (NOK)",
-                "status": "Status",
-            },
-            category_orders={"status": ["unknown", "available", "sold"]},
-            color_discrete_map={"unknown": "gray", "available": "seagreen", "sold": "firebrick"},
-        )
-    else:
-        fig_registration = px.scatter(
-            reg_data,
-            x="førstegangsregistrert",
-            y="totalpris",
-            color=color_column,
-            size=plot_size,
-            hover_data=["title", "merke", "modell", "tire_sets_cat"],
-            labels={
-                "førstegangsregistrert": "First Registration",
-                "totalpris": "Price (NOK)",
-                "kilometerstand_km": "Mileage (km)",
-                "age_years": "Age (years)",
-                "modellår": "Model Year",
-                "seter": "Seats",
-                "tire_sets_numeric": "Tire Sets",
-                "tire_sets_cat": "Tire Sets",
-            },
-            color_continuous_scale="plasma",
-        )
+    fig_registration = make_price_scatter(
+        reg_data,
+        x="førstegangsregistrert",
+        opts=plot_opts,
+        extra_hover=[],
+        continuous_scale="plasma",
+    )
 
     # Add regression line
     if len(reg_data) > 1:
@@ -770,8 +624,6 @@ with scatter_cols[1]:
             )
         )
 
-    fig_registration.update_xaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
-    fig_registration.update_yaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
     st.plotly_chart(fig_registration, use_container_width=True)
 
 st.subheader("Matching ads")
