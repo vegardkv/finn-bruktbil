@@ -124,7 +124,7 @@ import_show_norwegian = st.sidebar.checkbox("Norwegian", value=True)
 import_show_unknown = st.sidebar.checkbox("Unknown", value=True)
 
 
-def categorize_imported(value):
+def categorize_import_status(value):
     if value is True:
         return "imported"
     elif value is False:
@@ -134,7 +134,7 @@ def categorize_imported(value):
 
 
 if "imported" in subset.columns:
-    subset["import_category"] = subset["imported"].apply(categorize_imported)
+    subset["import_category"] = subset["imported"].apply(categorize_import_status)
 else:
     subset["import_category"] = "unknown"
 
@@ -281,20 +281,8 @@ tire_sets_numeric_map = {"unknown": 0, "one_set": 1, "two_sets": 2}
 subset["tire_sets_numeric"] = subset["tire_sets_cat"].map(tire_sets_numeric_map)
 
 
-# Map imported to categorical and numeric values for display
-def map_import_status(value):
-    if value is True:
-        return "imported"
-    elif value is False:
-        return "norwegian"
-    else:
-        return "unknown"
-
-
-if "imported" in subset.columns:
-    subset["import_status_cat"] = subset["imported"].apply(map_import_status)
-else:
-    subset["import_status_cat"] = "unknown"
+# Categorical import status for display; same categorization as the filter column.
+subset["import_status_cat"] = subset["import_category"]
 # Numeric mapping: unknown=0, norwegian=1, imported=2
 import_status_numeric_map = {"unknown": 0, "norwegian": 1, "imported": 2}
 subset["imported_numeric"] = subset["import_status_cat"].map(import_status_numeric_map)
