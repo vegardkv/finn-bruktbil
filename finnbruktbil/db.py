@@ -123,6 +123,10 @@ def initialize_schema(client: Client) -> None:
     pass
 
 
+# Ids per batched query; keeps the in_() filter comfortably inside URL limits.
+_ID_CHUNK_SIZE = 200
+
+
 def upsert_ad_ids(
     client: Client,
     source_url: str,
@@ -130,45 +134,46 @@ def upsert_ad_ids(
     *,
     fetched_by: str = "unknown",
 ) -> None:
-    """Insert or update ad IDs in the database."""
+    """Insert or update ad IDs in the database.
+
+    New ids are inserted as ``pending``. Ids seen before get their
+    ``source_url``/``fetched_by``/``last_seen`` refreshed (``first_seen`` is
+    preserved) and previously ``missing`` ids are reset to ``pending``.
+    Runs a handful of batched queries per chunk instead of two round trips
+    per id.
+    """
     now = datetime.now(UTC).isoformat()
+    unique_ids = list(dict.fromkeys(ad_ids))
 
-    records = [
-        {
-            "ad_id": ad_id,
-            "source_url": source_url,
-            "fetched_by": fetched_by,
-            "first_seen": now,
-            "last_seen": now,
-            "scrape_status": "pending",
-        }
-        for ad_id in ad_ids
-    ]
+    for start in range(0, len(unique_ids), _ID_CHUNK_SIZE):
+        chunk = unique_ids[start : start + _ID_CHUNK_SIZE]
 
-    if not records:
-        return
+        existing = client.table("ad_ids").select("ad_id, scrape_status").in_("ad_id", chunk).execute()
+        existing_ids = {row["ad_id"] for row in existing.data}
+        missing_ids = [row["ad_id"] for row in existing.data if row["scrape_status"] == "missing"]
 
-    # Supabase upsert: on conflict, update last_seen and conditionally scrape_status
-    # We need to handle this in batches and with custom logic
-    for record in records:
-        # Check if exists
-        existing = client.table("ad_ids").select("ad_id, scrape_status").eq("ad_id", record["ad_id"]).execute()
-
-        if existing.data:
-            # Update existing record
-            update_data = {
-                "source_url": record["source_url"],
-                "fetched_by": record["fetched_by"],
-                "last_seen": record["last_seen"],
+        new_records = [
+            {
+                "ad_id": ad_id,
+                "source_url": source_url,
+                "fetched_by": fetched_by,
+                "first_seen": now,
+                "last_seen": now,
+                "scrape_status": "pending",
             }
-            # Reset status from 'missing' to 'pending'
-            if existing.data[0]["scrape_status"] == "missing":
-                update_data["scrape_status"] = "pending"
+            for ad_id in chunk
+            if ad_id not in existing_ids
+        ]
+        if new_records:
+            client.table("ad_ids").insert(new_records).execute()
 
-            client.table("ad_ids").update(update_data).eq("ad_id", record["ad_id"]).execute()
-        else:
-            # Insert new record
-            client.table("ad_ids").insert(record).execute()
+        if existing_ids:
+            client.table("ad_ids").update(
+                {"source_url": source_url, "fetched_by": fetched_by, "last_seen": now}
+            ).in_("ad_id", sorted(existing_ids)).execute()
+
+        if missing_ids:
+            client.table("ad_ids").update({"scrape_status": "pending"}).in_("ad_id", missing_ids).execute()
 
 
 @dataclass
