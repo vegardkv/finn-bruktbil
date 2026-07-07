@@ -158,6 +158,21 @@ The implementation works seamlessly with both `.env` files (local development) a
 
 Note: This feature requires an OpenAI API key and will incur API costs.
 
+To try the parser on its own (makes one billable API call):
+
+```python
+from finnbruktbil.aux_data_parser import parse_aux_data_with_openai
+
+description = """
+Kia EV9 GT-Line AWD 7 seter med vinterhjul og hengerfeste!
+Ekstra sett med vinterhjul på felg. Kun 21.500 km kjørt!
+"""
+
+aux_data = parse_aux_data_with_openai(description)
+print(f"Tire sets: {aux_data.tire_sets.value}")
+print(f"Trim level: {aux_data.trim_level}")
+```
+
 Example `configs/analyze.json`:
 
 ```json

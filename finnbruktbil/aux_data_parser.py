@@ -250,34 +250,3 @@ def parse_aux_data_from_ad(
         return None
 
     return parse_aux_data_with_openai(description)
-
-
-# Example usage
-if __name__ == "__main__":
-    # Example Norwegian car ad description
-    example_description = """
-    Velkommen til Bilsenteret R2 AS hvor fornøyde bileiere står i fokus!
-    
-    Kia EV9 GT-Line AWD 7 seter med vinterhjul og hengerfeste!
-    
-    Denne flotte bilen er utstyrt med:
-    - Panoramatak
-    - Skinninteriør
-    - Adaptiv cruise control
-    - 360 graders kamera
-    - Elektrisk bakluke
-    - Ekstra sett med vinterhjul på felg
-    
-    Bilen er som ny og har full servicehistorikk.
-    Kun 21.500 km kjørt!
-    
-    Ta kontakt for visning og prøvekjøring.
-    """
-
-    try:
-        aux_data = parse_aux_data_with_openai(example_description)
-        print(f"Parsed data: {aux_data}")
-        print(f"Tire sets: {aux_data.tire_sets.value}")
-        print(f"Trim level: {aux_data.trim_level}")
-    except (ValueError, ImportError) as e:
-        print(f"Cannot run example: {e}")
