@@ -645,8 +645,7 @@ def main() -> None:
         render_ols_section(analysis_subset, metrics, plot_opts)
     else:
         st.warning(
-            "⚠️ Cannot perform OLS analysis: insufficient data or missing required libraries "
-            "(scikit-learn recommended)"
+            "⚠️ Cannot perform OLS analysis: insufficient data or missing required libraries (scikit-learn recommended)"
         )
 
     # TODO: Some ideas for further analysis:
