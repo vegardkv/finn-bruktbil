@@ -3,7 +3,6 @@ from __future__ import annotations
 import random
 import shutil
 import time
-from collections.abc import Iterable, Iterator
 
 from selenium import webdriver
 from selenium.common.exceptions import SessionNotCreatedException, TimeoutException, WebDriverException
@@ -68,13 +67,6 @@ def wait_for_elements(driver: webdriver.Chrome, selector: str, timeout: int = 10
         return True
     except TimeoutException:
         return False
-
-
-def extract_attribute_values(elements: Iterable, attribute: str) -> Iterator[str]:
-    for element in elements:
-        value = element.get_attribute(attribute)
-        if value:
-            yield value
 
 
 def polite_delay(min_seconds: float = 1.0, max_seconds: float = 3.0) -> None:
