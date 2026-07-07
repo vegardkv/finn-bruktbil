@@ -33,8 +33,6 @@ dev = ["ruff"]
 
 [tool.ruff]
 line-length = 120
-# Legacy scripts slated for deletion (REVIEW-TASKS.md #4); not worth linting.
-extend-exclude = ["scrape-ids.py", "scrape-articles.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "PTH", "PLR0913", "PLR2004", "C4", "RUF"]
