@@ -396,13 +396,21 @@ def load_ads_dataframe():
 
     client = _get_client()
 
-    # Fetch all ad details
-    result = client.table("ad_details").select("*").execute()
+    # Fetch all ad details. PostgREST caps responses (1000 rows by default),
+    # so page until a short page signals the end.
+    page_size = 1000
+    rows: list[dict] = []
+    while True:
+        offset = len(rows)
+        result = client.table("ad_details").select("*").range(offset, offset + page_size - 1).execute()
+        rows.extend(result.data)
+        if len(result.data) < page_size:
+            break
 
-    if not result.data:
+    if not rows:
         return pd.DataFrame()
 
-    ads = pd.DataFrame(result.data)
+    ads = pd.DataFrame(rows)
 
     if ads.empty:
         return ads
