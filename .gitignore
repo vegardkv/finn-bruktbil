@@ -1,62 +1,8 @@
-# Byte-compiled / optimized / DLL files
+# Python bytecode and cache
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_```
-# Python bytecode and cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
 .Python
 
 # Virtual environments
@@ -64,6 +10,24 @@ venv/
 env/
 ENV/
 .venv/
+
+# Distribution / packaging
+build/
+dist/
+wheels/
+*.egg-info/
+*.egg
+MANIFEST
+
+# Testing and coverage
+.coverage
+.coverage.*
+.pytest_cache/
+.tox/
+htmlcov/
+coverage.xml
+.hypothesis/
+.cache
 
 # IDE and editor files
 .vscode/
@@ -74,24 +38,9 @@ ENV/
 
 # OS generated files
 .DS_Store
-.DS_Store?
 ._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
-
-# Project builds and distributions
-build/
-dist/
-*.egg-info/
-*.egg
-
-# Testing and coverage
-.coverage
-.pytest_cache/
-.tox/
-htmlcov/
+ehthumbs.db
 
 # Environment variables
 .env
@@ -100,9 +49,10 @@ htmlcov/
 # Logs
 *.log
 
-# Database
+# Databases and scraped data output
 *.db
 *.sqlite3
+data/
 
 # Temporary files
 *.tmp
