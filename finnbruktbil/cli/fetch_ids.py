@@ -4,7 +4,6 @@ import argparse
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import List
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from selenium.webdriver.common.by import By
@@ -28,9 +27,9 @@ def build_page_url(base_url: str, page: int) -> str:
     return urlunsplit(parts)
 
 
-def extract_ids_from_page(driver) -> List[str]:
+def extract_ids_from_page(driver) -> list[str]:
     elements = driver.find_elements(By.CSS_SELECTOR, RESULT_SELECTOR)
-    ids: List[str] = []
+    ids: list[str] = []
 
     for element in elements:
         candidate = element.get_attribute("id") or ""
@@ -43,8 +42,8 @@ def extract_ids_from_page(driver) -> List[str]:
     return ids
 
 
-def collect_ad_ids(driver, base_url: str, max_pages: int, limit: int) -> List[str]:
-    collected: List[str] = []
+def collect_ad_ids(driver, base_url: str, max_pages: int, limit: int) -> list[str]:
+    collected: list[str] = []
     for page in range(1, max_pages + 1):
         page_url = build_page_url(base_url, page)
         driver.get(page_url)
@@ -62,26 +61,26 @@ def collect_ad_ids(driver, base_url: str, max_pages: int, limit: int) -> List[st
     return collected
 
 
-def extract_ids_from_favorites_file(file_path: Path) -> List[str]:
+def extract_ids_from_favorites_file(file_path: Path) -> list[str]:
     """Extract ad IDs from a local favorites HTML file.
-    
+
     Extracts IDs from href links: href="/123456789"
     This works for all formats and captures ads with or without images.
     """
     html_content = file_path.read_text(encoding="utf-8")
-    
+
     # Extract IDs from href links: href="/123456789"
     href_pattern = r'href="/(\d{9})"'
     matches = re.findall(href_pattern, html_content)
-    
+
     # Deduplicate while preserving order
     seen = set()
-    unique_ids: List[str] = []
+    unique_ids: list[str] = []
     for match in matches:
         if match not in seen:
             seen.add(match)
             unique_ids.append(match)
-    
+
     return unique_ids
 
 
@@ -100,7 +99,7 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
     return parser
 
 
-def fetch_ids_into_db(config: FetchIdsConfig) -> List[str]:
+def fetch_ids_into_db(config: FetchIdsConfig) -> list[str]:
     """Fetch ad identifiers from a FINN search URL or favorites file and persist them."""
 
     with db_session() as client:
@@ -111,21 +110,21 @@ def fetch_ids_into_db(config: FetchIdsConfig) -> List[str]:
         favorites_path = Path(config.favorites_file)
         if not favorites_path.exists():
             raise FileNotFoundError(f"Favorites file not found: {favorites_path}")
-        
+
         ad_ids = extract_ids_from_favorites_file(favorites_path)
         if config.limit:
-            ad_ids = ad_ids[:config.limit]
-        
+            ad_ids = ad_ids[: config.limit]
+
         print(f"Found {len(ad_ids)} unique ad ids in favorites file.")
         if not ad_ids:
             return []
-        
+
         fetched_by = config.fetched_by if config.fetched_by != "finn_search" else FAVORITES_FETCHED_BY
         source = str(favorites_path)
-        
+
         with db_session() as client:
             upsert_ad_ids(client, source, ad_ids, fetched_by=fetched_by)
-        
+
         return ad_ids
 
     # Mode 2: Scrape from FINN search URL

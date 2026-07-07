@@ -23,9 +23,9 @@ __all__ = [
     "initialize_schema",
     "load_ads_dataframe",
     "mark_missing",
-    "save_ad_detail",
-    "upsert_ad_ids",
     "polite_delay",
-    "wait_for_elements",
+    "save_ad_detail",
     "scrape_ad",
+    "upsert_ad_ids",
+    "wait_for_elements",
 ]

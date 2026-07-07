@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -12,13 +11,11 @@ import streamlit as st
 
 try:
     from sklearn.linear_model import LinearRegression
-    from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
-    from scipy import stats
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
     SKLEARN_AVAILABLE = True
-    SCIPY_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
-    SCIPY_AVAILABLE = False
 
 # Add parent directory to path to support both direct execution and module import
 if __name__ == "__main__" and __package__ is None:
@@ -26,6 +23,12 @@ if __name__ == "__main__" and __package__ is None:
     from finnbruktbil.db import load_ads_dataframe
 else:
     from .db import load_ads_dataframe
+
+
+# Sentinel year used when the data contains no model years at all.
+MODEL_YEAR_SENTINEL = 1900
+# Minimum rows with price/mileage/age required to fit the OLS model.
+MIN_OLS_SAMPLES = 10
 
 
 def _series_bounds(series, fallback_min: int = 0, fallback_max: int = 0) -> tuple[int, int]:
@@ -55,19 +58,19 @@ if data.empty:
     st.stop()
 
 brand_options = sorted({b for b in data["merke"].dropna().unique() if b})
-selected_brand = st.sidebar.selectbox("Brand", options=["(All)"] + brand_options)
+selected_brand = st.sidebar.selectbox("Brand", options=["(All)", *brand_options])
 
 subset = data.copy()
 if selected_brand != "(All)":
     subset = subset[subset["merke"] == selected_brand]
 
 model_options = sorted({m for m in subset["modell"].dropna().unique() if m})
-selected_model = st.sidebar.selectbox("Model", options=["(All)"] + model_options)
+selected_model = st.sidebar.selectbox("Model", options=["(All)", *model_options])
 if selected_model != "(All)":
     subset = subset[subset["modell"] == selected_model]
 
 seats_options = sorted({int(s) for s in subset["seter"].dropna().unique() if s})
-selected_seats = st.sidebar.selectbox("Number of seats", options=["(All)"] + seats_options)
+selected_seats = st.sidebar.selectbox("Number of seats", options=["(All)", *seats_options])
 if selected_seats != "(All)":
     subset = subset[subset["seter"] == selected_seats]
 
@@ -76,6 +79,7 @@ st.sidebar.markdown("**Trim Level**")
 trim_gt_line = st.sidebar.checkbox("GT-Line", value=True)
 trim_exclusive = st.sidebar.checkbox("Exclusive", value=True)
 trim_undetermined = st.sidebar.checkbox("Undetermined", value=True)
+
 
 # Categorize each row based on subtitle
 def categorize_trim(subtitle):
@@ -88,6 +92,7 @@ def categorize_trim(subtitle):
         return "exclusive"
     else:
         return "undetermined"
+
 
 subset["trim_category"] = subset["subtitle"].apply(categorize_trim)
 
@@ -118,6 +123,7 @@ import_show_imported = st.sidebar.checkbox("Imported", value=True)
 import_show_norwegian = st.sidebar.checkbox("Norwegian", value=True)
 import_show_unknown = st.sidebar.checkbox("Unknown", value=True)
 
+
 def categorize_imported(value):
     if value is True:
         return "imported"
@@ -125,6 +131,7 @@ def categorize_imported(value):
         return "norwegian"
     else:
         return "unknown"
+
 
 if "imported" in subset.columns:
     subset["import_category"] = subset["imported"].apply(categorize_imported)
@@ -153,8 +160,17 @@ st.sidebar.markdown("**Plot Customization**")
 # Get numeric columns for color and size options
 numeric_columns = subset.select_dtypes(include=[np.number]).columns.tolist()
 # Add calculated fields that will be available
-available_color_options = ["age_years", "kilometerstand_km", "totalpris", "modellår", "seter", "tire_sets_numeric", "imported_numeric", "status_numeric"]
-available_size_options = ["None"] + ["kilometerstand_km", "totalpris", "age_years", "modellår"]
+available_color_options = [
+    "age_years",
+    "kilometerstand_km",
+    "totalpris",
+    "modellår",
+    "seter",
+    "tire_sets_numeric",
+    "imported_numeric",
+    "status_numeric",
+]
+available_size_options = ["None", "kilometerstand_km", "totalpris", "age_years", "modellår"]
 
 color_column = st.sidebar.selectbox(
     "Color by",
@@ -170,7 +186,7 @@ color_column = st.sidebar.selectbox(
         "tire_sets_numeric": "Tire Sets",
         "imported_numeric": "Import Status",
         "status_numeric": "Status",
-    }.get(x, x)
+    }.get(x, x),
 )
 
 size_column = st.sidebar.selectbox(
@@ -183,8 +199,8 @@ size_column = st.sidebar.selectbox(
         "kilometerstand_km": "Mileage (km)",
         "totalpris": "Price (NOK)",
         "age_years": "Age (years)",
-        "modellår": "Model Year"
-    }.get(x, x)
+        "modellår": "Model Year",
+    }.get(x, x),
 )
 
 price_min, price_max = _series_bounds(subset["totalpris"], 0, 0)
@@ -195,7 +211,9 @@ if price_min < price_max:
         price_max,
         value=(price_min, price_max),
     )
-    subset = subset[(subset["totalpris"].fillna(0) >= price_range[0]) & (subset["totalpris"].fillna(0) <= price_range[1])]
+    subset = subset[
+        (subset["totalpris"].fillna(0) >= price_range[0]) & (subset["totalpris"].fillna(0) <= price_range[1])
+    ]
 else:
     st.sidebar.text(f"Price: {price_min:,} NOK")
 
@@ -208,12 +226,13 @@ if mileage_min < mileage_max:
         value=(mileage_min, mileage_max),
     )
     subset = subset[
-        (subset["kilometerstand_km"].fillna(0) >= mileage_range[0]) & (subset["kilometerstand_km"].fillna(0) <= mileage_range[1])
+        (subset["kilometerstand_km"].fillna(0) >= mileage_range[0])
+        & (subset["kilometerstand_km"].fillna(0) <= mileage_range[1])
     ]
 else:
     st.sidebar.text(f"Mileage: {mileage_min:,} km")
 
-year_min, year_max = _series_bounds(subset["modellår"], 1900, 1900)
+year_min, year_max = _series_bounds(subset["modellår"], MODEL_YEAR_SENTINEL, MODEL_YEAR_SENTINEL)
 if year_min < year_max:
     year_selection = st.sidebar.slider("Model year", year_min, year_max, (year_min, year_max))
     subset = subset[
@@ -221,7 +240,7 @@ if year_min < year_max:
         & (subset["modellår"].fillna(year_max) <= year_selection[1])
     ]
 else:
-    st.sidebar.text(f"Model year: {year_min if year_min > 1900 else 'N/A'}")
+    st.sidebar.text(f"Model year: {year_min if year_min > MODEL_YEAR_SENTINEL else 'N/A'}")
 
 if "status" in subset.columns:
     available_count = int(subset["status"].eq("available").sum())
@@ -238,19 +257,11 @@ metric_cols[2].metric("Sold", sold_count)
 metric_cols[3].metric("Unknown", unknown_count)
 
 # Preprocess: Calculate age in years
-import pandas as pd
-import numpy as np
-try:
-    from sklearn.linear_model import LinearRegression
-    from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
-
 subset = subset.copy()
 subset["fetched_at_dt"] = pd.to_datetime(subset["fetched_at"], errors="coerce", utc=True)
 subset["førstegangsregistrert_dt"] = pd.to_datetime(subset["førstegangsregistrert"], errors="coerce", utc=True)
 subset["age_years"] = (subset["fetched_at_dt"] - subset["førstegangsregistrert_dt"]).dt.days / 365.25
+
 
 # Map tire_sets to categorical values for better display
 def map_tire_sets(value):
@@ -263,10 +274,12 @@ def map_tire_sets(value):
     else:
         return "unknown"
 
+
 subset["tire_sets_cat"] = subset["tire_sets"].apply(map_tire_sets)
 # Create numeric mapping for color scale: unknown=0, one_set=1, two_sets=2
 tire_sets_numeric_map = {"unknown": 0, "one_set": 1, "two_sets": 2}
 subset["tire_sets_numeric"] = subset["tire_sets_cat"].map(tire_sets_numeric_map)
+
 
 # Map imported to categorical and numeric values for display
 def map_import_status(value):
@@ -276,6 +289,7 @@ def map_import_status(value):
         return "norwegian"
     else:
         return "unknown"
+
 
 if "imported" in subset.columns:
     subset["import_status_cat"] = subset["imported"].apply(map_import_status)
@@ -293,70 +307,72 @@ if "status" not in subset.columns:
 status_numeric_map = {"unknown": 0, "available": 1, "sold": 2}
 subset["status_numeric"] = subset["status"].map(status_numeric_map).fillna(0).astype(int)
 
+
 # OLS Regression Model: Price = c0 + c1*mileage + c2*age
 def perform_ols_analysis(data):
     """Perform OLS regression analysis on car price data."""
     # Filter out rows with missing values for the analysis
     analysis_data = data.dropna(subset=["totalpris", "kilometerstand_km", "age_years"]).copy()
-    
-    if len(analysis_data) < 10:  # Need sufficient data points
+
+    if len(analysis_data) < MIN_OLS_SAMPLES:
         return None, None, None, None
-    
+
     # Prepare features and target
     X = analysis_data[["kilometerstand_km", "age_years"]].values
     y = analysis_data["totalpris"].values
-    
+
     if SKLEARN_AVAILABLE:
         # Fit OLS model using sklearn
         model = LinearRegression()
         model.fit(X, y)
-        
+
         # Make predictions
         y_pred = model.predict(X)
-        
+
         # Calculate metrics
         r2 = r2_score(y, y_pred)
         mae = mean_absolute_error(y, y_pred)
         rmse = np.sqrt(mean_squared_error(y, y_pred))
-        
+
         # Calculate usedness score: weighted combination of mileage and age
         # Normalize coefficients to create usedness metric
         c1, c2 = model.coef_
         c0 = model.intercept_
-        
+
         # Create usedness as a linear combination: usedness = c1 * mileage + c2 * age
         # This makes the relationship: Price = c0 + usedness
         # So the regression line in Price vs Usedness will be perfectly straight
         analysis_data["usedness"] = c1 * analysis_data["kilometerstand_km"] + c2 * analysis_data["age_years"]
-        
+
         return model, analysis_data, {"r2": r2, "mae": mae, "rmse": rmse, "c0": c0, "c1": c1, "c2": c2}, y_pred
     else:
         # Simple manual OLS implementation if sklearn not available
         # Add intercept term
         X_with_intercept = np.column_stack([np.ones(len(X)), X])
-        
+
         # Calculate coefficients: (X'X)^-1 X'y
         try:
             coefficients = np.linalg.solve(X_with_intercept.T @ X_with_intercept, X_with_intercept.T @ y)
             c0, c1, c2 = coefficients
-            
+
             # Make predictions
             y_pred = X_with_intercept @ coefficients
-            
+
             # Calculate metrics
             ss_res = np.sum((y - y_pred) ** 2)
             ss_tot = np.sum((y - np.mean(y)) ** 2)
             r2 = 1 - (ss_res / ss_tot)
             mae = np.mean(np.abs(y - y_pred))
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))
-            
+
             # Calculate usedness score: usedness = c1 * mileage + c2 * age
             # This makes Price = c0 + usedness (perfectly linear relationship)
             analysis_data["usedness"] = c1 * analysis_data["kilometerstand_km"] + c2 * analysis_data["age_years"]
-            
+
             return None, analysis_data, {"r2": r2, "mae": mae, "rmse": rmse, "c0": c0, "c1": c1, "c2": c2}, y_pred
         except np.linalg.LinAlgError:
             return None, None, None, None
+
 
 # Perform OLS analysis
 model, analysis_subset, metrics, predictions = perform_ols_analysis(subset)
@@ -365,7 +381,7 @@ model, analysis_subset, metrics, predictions = perform_ols_analysis(subset)
 if metrics is not None:
     st.header("📊 Car Price Model Analysis")
     st.markdown("**Model**: Price = c₀ + c₁ × Mileage + c₂ × Age")
-    
+
     # Display model coefficients and metrics
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -376,7 +392,7 @@ if metrics is not None:
         st.metric("RMSE", f"{metrics['rmse']:,.0f} NOK")
     with col4:
         st.metric("Sample Size", len(analysis_subset) if analysis_subset is not None else 0)
-    
+
     # Display coefficients
     st.subheader("Model Coefficients")
     coeff_col1, coeff_col2, coeff_col3 = st.columns(3)
@@ -386,23 +402,23 @@ if metrics is not None:
         st.metric("Mileage Coeff (c₁)", f"{metrics['c1']:.2f} NOK/km")
     with coeff_col3:
         st.metric("Age Coeff (c₂)", f"{metrics['c2']:,.0f} NOK/year")
-    
+
     # Interpretation
     st.markdown(f"""
     **Model Interpretation:**
-    - **Base Price**: {metrics['c0']:,.0f} NOK (when mileage and age are zero)
-    - **Mileage Impact**: Each additional kilometer reduces value by {abs(metrics['c1']):.2f} NOK
-    - **Age Impact**: Each additional year reduces value by {abs(metrics['c2']):,.0f} NOK
-    - **Model Fit**: R² = {metrics['r2']:.3f} (explains {metrics['r2']*100:.1f}% of price variation)
+    - **Base Price**: {metrics["c0"]:,.0f} NOK (when mileage and age are zero)
+    - **Mileage Impact**: Each additional kilometer reduces value by {abs(metrics["c1"]):.2f} NOK
+    - **Age Impact**: Each additional year reduces value by {abs(metrics["c2"]):,.0f} NOK
+    - **Model Fit**: R² = {metrics["r2"]:.3f} (explains {metrics["r2"] * 100:.1f}% of price variation)
     """)
-    
+
     # Usedness vs Price plot
     if analysis_subset is not None:
         st.subheader("Price vs. Usedness Score")
-        
+
         # Prepare plot parameters
         plot_size = size_column if size_column != "None" else None
-        
+
         # Use discrete colors for tire_sets or imported, continuous for others
         if color_column == "tire_sets_numeric":
             fig_usedness = px.scatter(
@@ -420,11 +436,11 @@ if metrics is not None:
                     "modellår": "Model Year",
                     "seter": "Seats",
                     "tire_sets_numeric": "Tire Sets",
-                    "tire_sets_cat": "Tire Sets"
+                    "tire_sets_cat": "Tire Sets",
                 },
                 category_orders={"tire_sets_cat": ["unknown", "one_set", "two_sets"]},
                 color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"},
-                title="Car Price vs. Combined Usedness Score"
+                title="Car Price vs. Combined Usedness Score",
             )
         elif color_column == "imported_numeric":
             fig_usedness = px.scatter(
@@ -433,7 +449,15 @@ if metrics is not None:
                 y="totalpris",
                 color="import_status_cat",
                 size=plot_size,
-                hover_data=["title", "merke", "modell", "kilometerstand_km", "age_years", "import_status_cat", "import_country"],
+                hover_data=[
+                    "title",
+                    "merke",
+                    "modell",
+                    "kilometerstand_km",
+                    "age_years",
+                    "import_status_cat",
+                    "import_country",
+                ],
                 labels={
                     "usedness": "Usedness Score (0=New, 1=Most Used)",
                     "totalpris": "Price (NOK)",
@@ -442,7 +466,7 @@ if metrics is not None:
                 },
                 category_orders={"import_status_cat": ["unknown", "norwegian", "imported"]},
                 color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"},
-                title="Car Price vs. Combined Usedness Score"
+                title="Car Price vs. Combined Usedness Score",
             )
         elif color_column == "status_numeric":
             fig_usedness = px.scatter(
@@ -459,7 +483,7 @@ if metrics is not None:
                 },
                 category_orders={"status": ["unknown", "available", "sold"]},
                 color_discrete_map={"unknown": "gray", "available": "seagreen", "sold": "firebrick"},
-                title="Car Price vs. Combined Usedness Score"
+                title="Car Price vs. Combined Usedness Score",
             )
         else:
             fig_usedness = px.scatter(
@@ -477,40 +501,42 @@ if metrics is not None:
                     "modellår": "Model Year",
                     "seter": "Seats",
                     "tire_sets_numeric": "Tire Sets",
-                    "tire_sets_cat": "Tire Sets"
+                    "tire_sets_cat": "Tire Sets",
                 },
                 color_continuous_scale="viridis",
-                title="Car Price vs. Combined Usedness Score"
+                title="Car Price vs. Combined Usedness Score",
             )
-        
+
         # Add regression line: Price = c0 + usedness (perfectly straight line)
         # Since usedness = c1 * mileage + c2 * age, this is the OLS prediction
-        sorted_data = analysis_subset.sort_values('usedness')
+        sorted_data = analysis_subset.sort_values("usedness")
         usedness_range = sorted_data["usedness"].values
-        predicted_price = metrics['c0'] + usedness_range
-        
+        predicted_price = metrics["c0"] + usedness_range
+
         fig_usedness.add_trace(
             go.Scatter(
                 x=usedness_range,
                 y=predicted_price,
-                mode='lines',
-                name='OLS Regression (Price = c₀ + usedness)',
-                line=dict(color='red', width=2),
-                showlegend=True
+                mode="lines",
+                name="OLS Regression (Price = c₀ + usedness)",
+                line={"color": "red", "width": 2},
+                showlegend=True,
             )
         )
-        
-        fig_usedness.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
-        fig_usedness.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+        fig_usedness.update_xaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
+        fig_usedness.update_yaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
         st.plotly_chart(fig_usedness, use_container_width=True)
-        
+
         # Add correlation info
         if len(analysis_subset) > 1:
             corr = analysis_subset["usedness"].corr(analysis_subset["totalpris"])
             st.markdown(f"**Correlation between Usedness and Price**: {corr:.3f}")
-    
+
 else:
-    st.warning("⚠️ Cannot perform OLS analysis: insufficient data or missing required libraries (scikit-learn recommended)")
+    st.warning(
+        "⚠️ Cannot perform OLS analysis: insufficient data or missing required libraries (scikit-learn recommended)"
+    )
 
 # TODO: Some ideas for further analysis:
 # - Discretize color scales. E.g., milage buckets.
@@ -523,10 +549,10 @@ scatter_cols = st.columns(2)
 with scatter_cols[0]:
     st.subheader("Price vs. Mileage")
     mileage_data = subset.dropna(subset=["kilometerstand_km", "totalpris", "age_years"])
-    
+
     # Prepare plot parameters
     plot_size = size_column if size_column != "None" else None
-    
+
     # Use discrete colors for tire_sets or imported, continuous for others
     if color_column == "tire_sets_numeric":
         fig_mileage = px.scatter(
@@ -543,10 +569,10 @@ with scatter_cols[0]:
                 "modellår": "Model Year",
                 "seter": "Seats",
                 "tire_sets_numeric": "Tire Sets",
-                "tire_sets_cat": "Tire Sets"
+                "tire_sets_cat": "Tire Sets",
             },
             category_orders={"tire_sets_cat": ["unknown", "one_set", "two_sets"]},
-            color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"}
+            color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"},
         )
     elif color_column == "imported_numeric":
         fig_mileage = px.scatter(
@@ -563,7 +589,7 @@ with scatter_cols[0]:
                 "import_country": "Import Country",
             },
             category_orders={"import_status_cat": ["unknown", "norwegian", "imported"]},
-            color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"}
+            color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"},
         )
     elif color_column == "status_numeric":
         fig_mileage = px.scatter(
@@ -579,7 +605,7 @@ with scatter_cols[0]:
                 "status": "Status",
             },
             category_orders={"status": ["unknown", "available", "sold"]},
-            color_discrete_map={"unknown": "gray", "available": "seagreen", "sold": "firebrick"}
+            color_discrete_map={"unknown": "gray", "available": "seagreen", "sold": "firebrick"},
         )
     else:
         fig_mileage = px.scatter(
@@ -596,16 +622,16 @@ with scatter_cols[0]:
                 "modellår": "Model Year",
                 "seter": "Seats",
                 "tire_sets_numeric": "Tire Sets",
-                "tire_sets_cat": "Tire Sets"
+                "tire_sets_cat": "Tire Sets",
             },
-            color_continuous_scale="viridis"
+            color_continuous_scale="viridis",
         )
-    
+
     # Add regression line
     if len(mileage_data) > 1:
         X_mileage = mileage_data["kilometerstand_km"].values.reshape(-1, 1)
         y_mileage = mileage_data["totalpris"].values
-        
+
         if SKLEARN_AVAILABLE:
             lr_mileage = LinearRegression()
             lr_mileage.fit(X_mileage, y_mileage)
@@ -615,33 +641,35 @@ with scatter_cols[0]:
             # Manual linear regression
             X_mean = X_mileage.mean()
             y_mean = y_mileage.mean()
-            slope = np.sum((X_mileage.flatten() - X_mean) * (y_mileage - y_mean)) / np.sum((X_mileage.flatten() - X_mean) ** 2)
+            slope = np.sum((X_mileage.flatten() - X_mean) * (y_mileage - y_mean)) / np.sum(
+                (X_mileage.flatten() - X_mean) ** 2
+            )
             intercept = y_mean - slope * X_mean
             X_mileage_sorted = np.sort(X_mileage, axis=0)
             y_mileage_pred = slope * X_mileage_sorted.flatten() + intercept
-        
+
         fig_mileage.add_trace(
             go.Scatter(
                 x=X_mileage_sorted.flatten(),
                 y=y_mileage_pred,
-                mode='lines',
-                name='Regression Line',
-                line=dict(color='red', width=2),
-                showlegend=True
+                mode="lines",
+                name="Regression Line",
+                line={"color": "red", "width": 2},
+                showlegend=True,
             )
         )
-    
-    fig_mileage.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
-    fig_mileage.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+    fig_mileage.update_xaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
+    fig_mileage.update_yaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
     st.plotly_chart(fig_mileage, use_container_width=True)
 
 with scatter_cols[1]:
     st.subheader("Price vs. Registration Date")
     reg_data = subset.dropna(subset=["førstegangsregistrert", "totalpris"])
-    
+
     # Prepare plot parameters
     plot_size = size_column if size_column != "None" else None
-    
+
     # Use discrete colors for tire_sets or imported, continuous for others
     if color_column == "tire_sets_numeric":
         fig_registration = px.scatter(
@@ -659,10 +687,10 @@ with scatter_cols[1]:
                 "modellår": "Model Year",
                 "seter": "Seats",
                 "tire_sets_numeric": "Tire Sets",
-                "tire_sets_cat": "Tire Sets"
+                "tire_sets_cat": "Tire Sets",
             },
             category_orders={"tire_sets_cat": ["unknown", "one_set", "two_sets"]},
-            color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"}
+            color_discrete_map={"unknown": "gray", "one_set": "orange", "two_sets": "green"},
         )
     elif color_column == "imported_numeric":
         fig_registration = px.scatter(
@@ -679,7 +707,7 @@ with scatter_cols[1]:
                 "import_country": "Import Country",
             },
             category_orders={"import_status_cat": ["unknown", "norwegian", "imported"]},
-            color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"}
+            color_discrete_map={"unknown": "gray", "norwegian": "steelblue", "imported": "crimson"},
         )
     elif color_column == "status_numeric":
         fig_registration = px.scatter(
@@ -695,7 +723,7 @@ with scatter_cols[1]:
                 "status": "Status",
             },
             category_orders={"status": ["unknown", "available", "sold"]},
-            color_discrete_map={"unknown": "gray", "available": "seagreen", "sold": "firebrick"}
+            color_discrete_map={"unknown": "gray", "available": "seagreen", "sold": "firebrick"},
         )
     else:
         fig_registration = px.scatter(
@@ -713,11 +741,11 @@ with scatter_cols[1]:
                 "modellår": "Model Year",
                 "seter": "Seats",
                 "tire_sets_numeric": "Tire Sets",
-                "tire_sets_cat": "Tire Sets"
+                "tire_sets_cat": "Tire Sets",
             },
-            color_continuous_scale="plasma"
+            color_continuous_scale="plasma",
         )
-    
+
     # Add regression line
     if len(reg_data) > 1:
         # Convert dates to numeric (days since earliest date)
@@ -725,7 +753,7 @@ with scatter_cols[1]:
         min_date = reg_dates.min()
         X_reg = (reg_dates - min_date).dt.days.values.reshape(-1, 1)
         y_reg = reg_data["totalpris"].values
-        
+
         if SKLEARN_AVAILABLE:
             lr_reg = LinearRegression()
             lr_reg.fit(X_reg, y_reg)
@@ -739,23 +767,23 @@ with scatter_cols[1]:
             intercept = y_mean - slope * X_mean
             X_reg_sorted = np.sort(X_reg, axis=0)
             y_reg_pred = slope * X_reg_sorted.flatten() + intercept
-        
+
         # Convert X back to dates for plotting
-        dates_sorted = min_date + pd.to_timedelta(X_reg_sorted.flatten(), unit='D')
-        
+        dates_sorted = min_date + pd.to_timedelta(X_reg_sorted.flatten(), unit="D")
+
         fig_registration.add_trace(
             go.Scatter(
                 x=dates_sorted,
                 y=y_reg_pred,
-                mode='lines',
-                name='Regression Line',
-                line=dict(color='red', width=2),
-                showlegend=True
+                mode="lines",
+                name="Regression Line",
+                line={"color": "red", "width": 2},
+                showlegend=True,
             )
         )
-    
-    fig_registration.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
-    fig_registration.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+    fig_registration.update_xaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
+    fig_registration.update_yaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
     st.plotly_chart(fig_registration, use_container_width=True)
 
 st.subheader("Matching ads")
@@ -763,7 +791,7 @@ st.subheader("Matching ads")
 # Prepare columns for dataframe display
 display_columns = [
     "ad_id",
-    "title", 
+    "title",
     "totalpris",
     "kilometerstand_km",
     "age_years",
@@ -781,20 +809,18 @@ if analysis_subset is not None and "usedness" in analysis_subset.columns:
     # Check if ad_id exists in both dataframes for merging
     if "ad_id" in analysis_subset.columns and "ad_id" in display_subset.columns:
         # Merge usedness scores back to the main subset
-        display_subset = display_subset.merge(
-            analysis_subset[["ad_id", "usedness"]], 
-            on="ad_id", 
-            how="left"
-        )
+        display_subset = display_subset.merge(analysis_subset[["ad_id", "usedness"]], on="ad_id", how="left")
         display_columns.insert(5, "usedness")  # Insert after age_years
     else:
         # If no ad_id for merging, add usedness to all rows that have complete data
         complete_data_mask = (
-            display_subset["totalpris"].notna() & 
-            display_subset["kilometerstand_km"].notna() & 
-            display_subset["age_years"].notna()
+            display_subset["totalpris"].notna()
+            & display_subset["kilometerstand_km"].notna()
+            & display_subset["age_years"].notna()
         )
-        display_subset.loc[complete_data_mask, "usedness"] = analysis_subset["usedness"].values[:len(display_subset[complete_data_mask])]
+        display_subset.loc[complete_data_mask, "usedness"] = analysis_subset["usedness"].values[
+            : len(display_subset[complete_data_mask])
+        ]
         display_columns.insert(5, "usedness")
 
 available_display_columns = [c for c in display_columns if c in display_subset.columns]

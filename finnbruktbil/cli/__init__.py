@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from typing import Iterable, Optional, Sequence
+from collections.abc import Iterable, Sequence
 
 from . import analyze, download_data, fetch_ids, summarize
 
@@ -24,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run_cli(argv: Optional[Sequence[str]] = None) -> int:
+def run_cli(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     handler = getattr(args, "func", None)
@@ -38,7 +38,7 @@ def run_cli(argv: Optional[Sequence[str]] = None) -> int:
     return 0
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Entry-point compatible with ``python -m finnbruktbil`` and console scripts."""
 
     exit_code = run_cli(argv)

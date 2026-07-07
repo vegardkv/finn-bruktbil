@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Optional
+from http import HTTPStatus
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -30,7 +31,7 @@ _RETRY_DELAY_S = 2.0
 
 def lookup_import_status(
     registration_number: str,
-) -> tuple[Optional[bool], Optional[str]]:
+) -> tuple[bool | None, str | None]:
     """Look up whether a car was imported using Statens Vegvesen's API.
 
     Args:
@@ -54,7 +55,7 @@ def lookup_import_status(
 
 def lookup_import_status_by_vin(
     chassis_number: str,
-) -> tuple[Optional[bool], Optional[str]]:
+) -> tuple[bool | None, str | None]:
     """Look up whether a car was imported using its chassis number (VIN).
 
     Uses the ``understellsnummer`` query parameter of the same Vegvesen
@@ -79,7 +80,7 @@ def lookup_import_status_by_vin(
 def _lookup(
     params: dict,
     identifier: str,
-) -> tuple[Optional[bool], Optional[str]]:
+) -> tuple[bool | None, str | None]:
     """Query the Vegvesen API with the given lookup params and parse the result.
 
     Args:
@@ -112,10 +113,10 @@ def _lookup(
                 time.sleep(_RETRY_DELAY_S)
             continue
 
-        if response.status_code == 200:
+        if response.status_code == HTTPStatus.OK:
             return _parse_response(response.json())
 
-        if response.status_code == 404:
+        if response.status_code == HTTPStatus.NOT_FOUND:
             # Vehicle not found in the registry — treat as non-imported Norwegian car.
             return False, None
 
@@ -129,17 +130,14 @@ def _lookup(
             continue
 
         # Other unexpected status codes — log and give up.
-        print(
-            f"Warning: Vegvesen API returned unexpected status {response.status_code} "
-            f"for {identifier!r}"
-        )
+        print(f"Warning: Vegvesen API returned unexpected status {response.status_code} for {identifier!r}")
         return None, None
 
     # All retries exhausted.
     return None, None
 
 
-def _parse_response(data: dict) -> tuple[Optional[bool], Optional[str]]:
+def _parse_response(data: dict) -> tuple[bool | None, str | None]:
     """Extract import status and country from a Vegvesen API JSON response."""
     try:
         vehicles = data.get("kjoretoydataListe") or []
@@ -156,7 +154,7 @@ def _parse_response(data: dict) -> tuple[Optional[bool], Optional[str]]:
 
         # bruktimport is non-null → the car was imported as a used vehicle.
         importland = bruktimport.get("importland") or {}
-        country_name: Optional[str] = importland.get("landNavn") or None
+        country_name: str | None = importland.get("landNavn") or None
 
         return True, country_name
 

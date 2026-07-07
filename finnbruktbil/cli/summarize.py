@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import argparse
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from ..db import load_ads_dataframe
 from .config import CarConstraints, ConstraintType, load_config
@@ -35,34 +36,34 @@ def _alnum(value: Any) -> str:
     return re.sub(r"[^0-9a-z]", "", str(value).lower())
 
 
-def _eval_max_price(car: "pd.Series", value: Any) -> bool | None:
+def _eval_max_price(car: pd.Series, value: Any) -> bool | None:
     price = car.get("totalpris")
     return price <= value if _notna(price) else None
 
 
-def _eval_min_price(car: "pd.Series", value: Any) -> bool | None:
+def _eval_min_price(car: pd.Series, value: Any) -> bool | None:
     price = car.get("totalpris")
     return price >= value if _notna(price) else None
 
 
-def _eval_number_of_seats(car: "pd.Series", value: Any) -> bool | None:
+def _eval_number_of_seats(car: pd.Series, value: Any) -> bool | None:
     seats = car.get("seter")
     return seats >= value if _notna(seats) else None
 
 
-def _eval_trim_level(car: "pd.Series", value: Any) -> bool | None:
+def _eval_trim_level(car: pd.Series, value: Any) -> bool | None:
     trim = car.get("trim_level")
     if not _notna(trim):
         return None
     return _alnum(trim) == _alnum(value)
 
 
-def _eval_imported(car: "pd.Series", value: Any) -> bool | None:
+def _eval_imported(car: pd.Series, value: Any) -> bool | None:
     imported = car.get("imported")
     return bool(imported) == bool(value) if _notna(imported) else None
 
 
-def _eval_max_mileage(car: "pd.Series", value: Any) -> bool | None:
+def _eval_max_mileage(car: pd.Series, value: Any) -> bool | None:
     mileage = car.get("kilometerstand_km")
     return mileage <= value if _notna(mileage) else None
 
@@ -90,7 +91,7 @@ def _color_aliases(value: str) -> tuple[str, ...]:
     return (value,)
 
 
-def _eval_color(car: "pd.Series", value: Any) -> bool | None:
+def _eval_color(car: pd.Series, value: Any) -> bool | None:
     # Substring match against the free-text color description, so "grey" catches
     # "Pebble Grey Metallic" (plus its aliases via COLOR_ALIASES). Falls back to the
     # normalized "farge" code when the description is missing or doesn't match.
@@ -107,7 +108,7 @@ def _eval_color(car: "pd.Series", value: Any) -> bool | None:
 
 
 # Registry: config field name -> evaluator.
-CONSTRAINT_EVALUATORS: dict[str, Callable[["pd.Series", Any], bool | None]] = {
+CONSTRAINT_EVALUATORS: dict[str, Callable[[pd.Series, Any], bool | None]] = {
     "max_price": _eval_max_price,
     "min_price": _eval_min_price,
     "number_of_seats": _eval_number_of_seats,
@@ -135,7 +136,7 @@ def _active_constraints(config: CarConstraints) -> list[tuple[str, Any, Constrai
 
 
 def evaluate_car(
-    car: "pd.Series", active: list[tuple[str, Any, ConstraintType]]
+    car: pd.Series, active: list[tuple[str, Any, ConstraintType]]
 ) -> tuple[bool, int, dict[str, bool | None]]:
     """Return ``(passes_all_hard, soft_score, results)`` for a single car, where
     ``results`` maps each active constraint field to its tri-state evaluator output
@@ -168,8 +169,8 @@ class ConstraintStat:
 class SummaryResult:
     model_count: int  # cars found for the requested make/model
     constraint_stats: list[ConstraintStat]
-    feasible_sorted: list[tuple["pd.Series", int]]  # all time, (car, score) desc by score
-    available_sorted: list[tuple["pd.Series", int]]  # currently available (status == "available")
+    feasible_sorted: list[tuple[pd.Series, int]]  # all time, (car, score) desc by score
+    available_sorted: list[tuple[pd.Series, int]]  # currently available (status == "available")
 
 
 def summarize_cars(config: CarConstraints) -> SummaryResult:
@@ -188,7 +189,7 @@ def summarize_cars(config: CarConstraints) -> SummaryResult:
     ]
 
     tallies = {field: {"satisfied": 0, "missing": 0} for field, _, _ in active}
-    feasible: list[tuple["pd.Series", int]] = []
+    feasible: list[tuple[pd.Series, int]] = []
     for _, car in model_df.iterrows():
         passes_hard, score, results = evaluate_car(car, active)
         for field, result in results.items():
@@ -213,7 +214,7 @@ def summarize_cars(config: CarConstraints) -> SummaryResult:
 # --- Presentation --------------------------------------------------------------
 
 
-def _format_car_line(car: "pd.Series", score: int) -> str:
+def _format_car_line(car: pd.Series, score: int) -> str:
     title = car.get("title") or f"{car.get('merke', '')} {car.get('modell', '')}".strip()
     price = car.get("totalpris")
     price_str = f"{int(price)} kr" if _notna(price) else "pris ukjent"
@@ -224,7 +225,7 @@ def _format_car_line(car: "pd.Series", score: int) -> str:
     return f"score={score} | {title} | {price_str} | {seats_str} | {url}"
 
 
-def _print_list(title: str, cars: list[tuple["pd.Series", int]]) -> None:
+def _print_list(title: str, cars: list[tuple[pd.Series, int]]) -> None:
     print(f"\n{title} ({len(cars)}):")
     for car, score in cars:
         print(f"  {_format_car_line(car, score)}")
@@ -238,10 +239,7 @@ def print_summary(result: SummaryResult) -> None:
     if result.constraint_stats:
         print(f"\nPer-constraint (of {result.model_count} found cars):")
         for st in result.constraint_stats:
-            print(
-                f"  [{st.ctype}] {st.field}={st.value!r}: "
-                f"{st.satisfied} satisfied, {st.missing} missing data"
-            )
+            print(f"  [{st.ctype}] {st.field}={st.value!r}: {st.satisfied} satisfied, {st.missing} missing data")
 
     _print_list("Best fits (all time)", result.feasible_sorted)
     _print_list("Best fits (currently available)", result.available_sorted)

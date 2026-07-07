@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import List
 
 from selenium.common.exceptions import WebDriverException
 
@@ -42,7 +41,7 @@ def download_ads(config: DownloadConfig) -> tuple[int, int]:
 
     with db_session() as client:
         initialize_schema(client)
-        target_ids: List[str] = fetch_ids_for_scraping(
+        target_ids: list[str] = fetch_ids_for_scraping(
             client,
             limit=config.limit,
             stale_hours=config.stale_hours,

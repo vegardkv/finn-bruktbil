@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, Optional
 
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 
-from .db import AdRecord
 from .browser import wait_for_elements
+from .db import AdRecord
 
 AD_BASE_URL = "https://www.finn.no/mobility/item/"
 
 
-def _text_or_none(driver, selector: str) -> Optional[str]:
+def _text_or_none(driver, selector: str) -> str | None:
     try:
         element = driver.find_element(By.CSS_SELECTOR, selector)
     except NoSuchElementException:
@@ -24,7 +23,7 @@ def _text_or_none(driver, selector: str) -> Optional[str]:
 
 def _get_text_content(element: WebElement) -> str:
     """Extract text content from an element using textContent attribute.
-    
+
     This is more reliable than .text as it gets all text including hidden elements.
     """
     raw_text = (element.get_attribute("textContent") or "").strip()
@@ -33,7 +32,7 @@ def _get_text_content(element: WebElement) -> str:
     return " ".join(part for part in normalized.split())
 
 
-def _parse_int(value: Optional[str]) -> Optional[int]:
+def _parse_int(value: str | None) -> int | None:
     if not value:
         return None
     digits = "".join(ch for ch in value if ch.isdigit())
@@ -45,14 +44,14 @@ def _parse_int(value: Optional[str]) -> Optional[int]:
         return None
 
 
-def _extract_key_info(root: WebElement) -> Dict[str, str]:
-    key_info: Dict[str, str] = {}
+def _extract_key_info(root: WebElement) -> dict[str, str]:
+    key_info: dict[str, str] = {}
     for dl in root.find_elements(By.TAG_NAME, "dl"):
         keys = dl.find_elements(By.TAG_NAME, "dt")
         values = dl.find_elements(By.TAG_NAME, "dd")
         if len(keys) != len(values):
             continue
-        for key_el, value_el in zip(keys, values):
+        for key_el, value_el in zip(keys, values, strict=True):
             # Use textContent which gets all text (even hidden)
             raw_key = (key_el.get_attribute("textContent") or "").strip()
             raw_value = _get_text_content(value_el)
@@ -67,7 +66,7 @@ def _extract_key_info(root: WebElement) -> Dict[str, str]:
     return key_info
 
 
-def _parse_date_string(date_str: Optional[str]) -> Optional[str]:
+def _parse_date_string(date_str: str | None) -> str | None:
     """Parse Norwegian date format (DD.MM.YYYY) to ISO format (YYYY-MM-DD)."""
     if not date_str:
         return None
@@ -79,13 +78,22 @@ def _parse_date_string(date_str: Optional[str]) -> Optional[str]:
 
 
 _NORWEGIAN_MONTHS = {
-    "januar": 1, "februar": 2, "mars": 3, "april": 4,
-    "mai": 5, "juni": 6, "juli": 7, "august": 8,
-    "september": 9, "oktober": 10, "november": 11, "desember": 12,
+    "januar": 1,
+    "februar": 2,
+    "mars": 3,
+    "april": 4,
+    "mai": 5,
+    "juni": 6,
+    "juli": 7,
+    "august": 8,
+    "september": 9,
+    "oktober": 10,
+    "november": 11,
+    "desember": 12,
 }
 
 
-def _parse_norwegian_datetime(date_str: Optional[str]) -> Optional[str]:
+def _parse_norwegian_datetime(date_str: str | None) -> str | None:
     """Parse Norwegian long-form datetime (e.g. '22. oktober 2025, 16:12') to ISO format."""
     if not date_str:
         return None
@@ -149,13 +157,13 @@ FIELD_MAPPING = {
 }
 
 
-def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRecord]:
+def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> AdRecord | None:
     driver.get(f"{AD_BASE_URL}{ad_id}")
     if not wait_for_elements(driver, "h1", timeout=15):
         return None
 
     title = _text_or_none(driver, "h1")
-    
+
     # Extract subtitle - the paragraph right after the h1 title
     subtitle = None
     try:
@@ -167,7 +175,7 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
         subtitle = subtitle_text or None
     except NoSuchElementException:
         pass
-    
+
     # Extract total price - look for "Totalpris" label
     totalpris = None
     try:
@@ -190,10 +198,10 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
     # Track which keys were used and which were not
     expected_keys = set(FIELD_MAPPING.values())
     found_keys = set(key_info.keys())
-    
+
     missing_keys = expected_keys - found_keys
     redundant_keys = found_keys - expected_keys
-    
+
     if missing_keys:
         print(f"Missing keys for ad {ad_id}: {sorted(missing_keys)}")
     if redundant_keys:
@@ -215,9 +223,7 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
     # without ever showing the SOLGT badge, so treat inactive as sold.
     if not solgt:
         try:
-            if driver.find_elements(
-                By.XPATH, "//*[contains(text(), 'ikke lenger tilgjengelig')]"
-            ):
+            if driver.find_elements(By.XPATH, "//*[contains(text(), 'ikke lenger tilgjengelig')]"):
                 solgt = True
         except Exception:
             pass
@@ -225,13 +231,9 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
     # Extract "Sist oppdatert" (last modified) from the Annonseinformasjon section
     sist_oppdatert = None
     try:
-        label = driver.find_element(
-            By.XPATH, "//p[normalize-space(text())='Sist oppdatert']"
-        )
+        label = driver.find_element(By.XPATH, "//p[normalize-space(text())='Sist oppdatert']")
         value_el = label.find_element(By.XPATH, "following-sibling::p[1]")
-        sist_oppdatert = _parse_norwegian_datetime(
-            value_el.get_attribute("textContent").strip()
-        )
+        sist_oppdatert = _parse_norwegian_datetime(value_el.get_attribute("textContent").strip())
     except NoSuchElementException:
         pass
 
@@ -247,8 +249,8 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
     tire_sets_value = None
     trim_level_value = None
     raw_description_value = None
-    imported_value: Optional[bool] = None
-    import_country_value: Optional[str] = None
+    imported_value: bool | None = None
+    import_country_value: str | None = None
     import_method = ImportDeterminationMethod.NOT_CHECKED
 
     # Primary: Vegvesen chassis-number (VIN) lookup.
@@ -282,6 +284,7 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> Optional[AdRe
     if parse_aux_data:
         try:
             from .aux_data_parser import parse_aux_data_from_ad
+
             aux_data = parse_aux_data_from_ad(driver, ad_id)
             if aux_data:
                 tire_sets_value = aux_data.tire_sets.value

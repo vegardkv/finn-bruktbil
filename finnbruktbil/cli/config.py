@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Type, TypeVar
+from typing import TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -23,7 +23,9 @@ class DownloadConfig(BaseModel):
     stale_hours: int | None = Field(default=None, ge=1)
     random_order: bool = False
     headless: bool = True
-    parse_aux_data: bool = Field(default=False, description="Enable parsing of auxiliary data (tire sets, trim level) using OpenAI API")
+    parse_aux_data: bool = Field(
+        default=False, description="Enable parsing of auxiliary data (tire sets, trim level) using OpenAI API"
+    )
 
 
 class AnalyzeConfig(BaseModel):
@@ -54,7 +56,7 @@ class CarConstraints(BaseModel):
     # more constraints added here later
 
 
-def load_config(path: str | Path, model_cls: Type[T]) -> T:
+def load_config(path: str | Path, model_cls: type[T]) -> T:
     config_path = Path(path)
     raw = config_path.read_text(encoding="utf-8")
     if hasattr(model_cls, "model_validate_json"):
