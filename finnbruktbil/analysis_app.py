@@ -161,29 +161,25 @@ trim_exclusive = st.sidebar.checkbox("Exclusive", value=True)
 trim_undetermined = st.sidebar.checkbox("Undetermined", value=True)
 
 
-# Categorize each row based on subtitle
-def categorize_trim(subtitle):
-    if pd.isna(subtitle) or subtitle == "":
+# Categorize each row: the aux-parsed trim_level column (see aux_data_parser.py)
+# is authoritative when present; subtitle parsing is the fallback for ads scraped
+# without parse_aux_data.
+def categorize_trim(row):
+    source = row.get("trim_level")
+    if pd.isna(source) or source == "":
+        source = row.get("subtitle")
+    if pd.isna(source) or source == "":
         return "undetermined"
-    subtitle_lower = str(subtitle).lower()
-    if "gt-line" in subtitle_lower or "gt line" in subtitle_lower:
+    text = str(source).lower()
+    if "gt-line" in text or "gt line" in text:
         return "gt-line"
-    elif "exclusive" in subtitle_lower:
+    elif "exclusive" in text:
         return "exclusive"
     else:
         return "undetermined"
 
 
-subset["trim_category"] = subset["subtitle"].apply(categorize_trim)
-
-# TODO: it would be better to rather post-process the database for auxiliary fields
-# This post-processing should be able to run while downloading/scraping the data
-# if requested. Relevant aspects:
-# - Identify trim level more generally, so that the analysis script references trim
-#   level column instead of a model-specific subtitle parsing.
-# - Determine if two sets of tires are included (summer/winter). This could be
-#   inferred from subtitle or other fields. May want to use chatgpt or similar
-#   to help with natural language parsing of subtitles and descriptions.
+subset["trim_category"] = subset.apply(categorize_trim, axis=1)
 
 # Filter based on selected trim levels
 selected_trims = []
