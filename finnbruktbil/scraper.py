@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from selenium.common.exceptions import NoSuchElementException
@@ -8,6 +9,8 @@ from selenium.webdriver.remote.webelement import WebElement
 
 from .browser import wait_for_elements
 from .db import AdRecord
+
+logger = logging.getLogger(__name__)
 
 AD_BASE_URL = "https://www.finn.no/mobility/item/"
 
@@ -192,7 +195,7 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> AdRecord | No
         key_info_section = driver.find_element(By.CSS_SELECTOR, ".key-info-section")
         key_info = _extract_key_info(key_info_section)
     except NoSuchElementException:
-        print(f"Warning: No key-info-section found for ad {ad_id}")
+        logger.warning(f"No key-info-section found for ad {ad_id}")
         key_info = {}
 
     # Track which keys were used and which were not
@@ -203,9 +206,9 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> AdRecord | No
     redundant_keys = found_keys - expected_keys
 
     if missing_keys:
-        print(f"Missing keys for ad {ad_id}: {sorted(missing_keys)}")
+        logger.info(f"Missing keys for ad {ad_id}: {sorted(missing_keys)}")
     if redundant_keys:
-        print(f"Redundant keys for ad {ad_id}: {sorted(redundant_keys)}")
+        logger.info(f"Redundant keys for ad {ad_id}: {sorted(redundant_keys)}")
 
     # Check for SOLGT (sold) badge
     solgt = False
@@ -259,7 +262,7 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> AdRecord | No
         try:
             imported_value, import_country_value = lookup_import_status_by_vin(chassis_nr)
         except Exception as exc:
-            print(f"Warning: Vegvesen VIN lookup failed for ad {ad_id}: {exc}")
+            logger.warning(f"Vegvesen VIN lookup failed for ad {ad_id}: {exc}")
         import_method = (
             ImportDeterminationMethod.CHASSIS_LOOKUP  # incl. 404 -> not imported
             if imported_value is not None
@@ -272,7 +275,7 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> AdRecord | No
         try:
             imported_value, import_country_value = lookup_import_status(reg_nr)
         except Exception as exc:
-            print(f"Warning: Vegvesen lookup failed for ad {ad_id}: {exc}")
+            logger.warning(f"Vegvesen lookup failed for ad {ad_id}: {exc}")
         import_method = (
             ImportDeterminationMethod.REGISTRATION_LOOKUP  # incl. 404 -> not imported
             if imported_value is not None
@@ -297,7 +300,7 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> AdRecord | No
                     else:
                         import_method = ImportDeterminationMethod.INCONCLUSIVE
         except Exception as exc:
-            print(f"Warning: Failed to parse auxiliary data for ad {ad_id}: {exc}")
+            logger.warning(f"Failed to parse auxiliary data for ad {ad_id}: {exc}")
 
     import_method_value = import_method.value
 

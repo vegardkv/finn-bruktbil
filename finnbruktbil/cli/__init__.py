@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from collections.abc import Iterable, Sequence
 
 from . import analyze, download_data, fetch_ids, summarize
+
+
+def setup_logging(level: int = logging.INFO) -> None:
+    """Configure a console handler for the pipeline's ``logging`` diagnostics.
+
+    Called by the CLI and the root-level ``cli-*.py`` wrappers; a no-op if the
+    root logger already has handlers.
+    """
+    logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_cli(argv: Sequence[str] | None = None) -> int:
+    setup_logging()
     parser = build_parser()
     args = parser.parse_args(argv)
     handler = getattr(args, "func", None)

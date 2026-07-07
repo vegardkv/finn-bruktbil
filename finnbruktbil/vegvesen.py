@@ -11,6 +11,7 @@ Set the key in the SVV_API_KEY environment variable (or .env file).
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from http import HTTPStatus
@@ -21,6 +22,8 @@ try:
     load_dotenv()
 except ImportError:
     pass
+
+logger = logging.getLogger(__name__)
 
 SVV_API_KEY = os.environ.get("SVV_API_KEY", None)
 
@@ -94,7 +97,7 @@ def _lookup(
     try:
         import requests
     except ImportError:
-        print("Warning: 'requests' package is not installed; skipping Vegvesen lookup")
+        logger.warning("'requests' package is not installed; skipping Vegvesen lookup")
         return None, None
 
     headers = {"SVV-Authorization": f"Apikey {SVV_API_KEY}"}
@@ -108,7 +111,7 @@ def _lookup(
                 timeout=10,
             )
         except requests.RequestException as exc:
-            print(f"Warning: Vegvesen API request failed for {identifier!r} (attempt {attempt}): {exc}")
+            logger.warning(f"Vegvesen API request failed for {identifier!r} (attempt {attempt}): {exc}")
             if attempt < _MAX_RETRIES:
                 time.sleep(_RETRY_DELAY_S)
             continue
@@ -121,16 +124,15 @@ def _lookup(
             return False, None
 
         if response.status_code in (429, 500, 502, 503, 504):
-            print(
-                f"Warning: Vegvesen API returned {response.status_code} for {identifier!r} "
-                f"(attempt {attempt}/{_MAX_RETRIES})"
+            logger.warning(
+                f"Vegvesen API returned {response.status_code} for {identifier!r} (attempt {attempt}/{_MAX_RETRIES})"
             )
             if attempt < _MAX_RETRIES:
                 time.sleep(_RETRY_DELAY_S * attempt)
             continue
 
         # Other unexpected status codes — log and give up.
-        print(f"Warning: Vegvesen API returned unexpected status {response.status_code} for {identifier!r}")
+        logger.warning(f"Vegvesen API returned unexpected status {response.status_code} for {identifier!r}")
         return None, None
 
     # All retries exhausted.
@@ -159,5 +161,5 @@ def _parse_response(data: dict) -> tuple[bool | None, str | None]:
         return True, country_name
 
     except Exception as exc:
-        print(f"Warning: Failed to parse Vegvesen API response: {exc}")
+        logger.warning(f"Failed to parse Vegvesen API response: {exc}")
         return None, None

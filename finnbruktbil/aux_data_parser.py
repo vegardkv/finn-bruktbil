@@ -6,6 +6,7 @@ available in the structured fields, such as tire sets and trim levels.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from enum import StrEnum
@@ -24,6 +25,8 @@ except ImportError:
     # dotenv not available, will use system environment variables
     pass
 
+
+logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", None)
 
@@ -105,7 +108,7 @@ def extract_description_from_ad(driver: WebDriver, ad_id: str) -> str | None:
         except NoSuchElementException:
             continue
 
-    print(f"Warning: No description found for ad {ad_id}")
+    logger.warning(f"No description found for ad {ad_id}")
     return None
 
 
@@ -194,7 +197,7 @@ Respond ONLY with valid JSON in this exact format:
         try:
             tire_sets = TireSet(tire_sets_str)
         except ValueError:
-            print(f"Warning: Invalid tire_sets value '{tire_sets_str}', defaulting to UNKNOWN")
+            logger.warning(f"Invalid tire_sets value '{tire_sets_str}', defaulting to UNKNOWN")
             tire_sets = TireSet.UNKNOWN
 
         trim_level = result.get("trim_level")
@@ -216,7 +219,7 @@ Respond ONLY with valid JSON in this exact format:
         )
 
     except Exception as exc:
-        print(f"Error calling OpenAI API: {exc}")
+        logger.error(f"Error calling OpenAI API: {exc}")
         # Return conservative defaults on error
         return AuxData(
             tire_sets=TireSet.UNKNOWN,
