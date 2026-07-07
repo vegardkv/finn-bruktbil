@@ -168,9 +168,9 @@ def upsert_ad_ids(
             client.table("ad_ids").insert(new_records).execute()
 
         if existing_ids:
-            client.table("ad_ids").update(
-                {"source_url": source_url, "fetched_by": fetched_by, "last_seen": now}
-            ).in_("ad_id", sorted(existing_ids)).execute()
+            client.table("ad_ids").update({"source_url": source_url, "fetched_by": fetched_by, "last_seen": now}).in_(
+                "ad_id", sorted(existing_ids)
+            ).execute()
 
         if missing_ids:
             client.table("ad_ids").update({"scrape_status": "pending"}).in_("ad_id", missing_ids).execute()
