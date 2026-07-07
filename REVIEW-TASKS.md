@@ -1,5 +1,30 @@
 # Code Quality Review — finnbruktbil
 
+## Status: all tasks completed (2026-07-07)
+
+Every task below has been implemented, one commit per task on the `fable-review` branch:
+
+| Task | Commit |
+|------|--------|
+| #1 ruff config + baseline | `e502a24` (with #5, and the `1900`/`10` constants from #16) |
+| #18 corrupted .gitignore | `67fd4f2` |
+| #14 scratch/data artifacts | `85a481d` |
+| #4 legacy scripts | `625f914` |
+| #2 stale-hours query bug | `46887f4` |
+| #17 PostgREST 1000-row cap | `1185e86` |
+| #7 batched upsert_ad_ids | `2c4a471` |
+| #13 no-op initialize_schema calls | `3eeae67` |
+| #11 dead extract_attribute_values | `f64bc33` |
+| #9 phantom api_key docstrings | `2eae9c8` |
+| #10 logging for diagnostics | `dec1fa8` |
+| #6 duplicate categorizers | `8779c37` |
+| #3 + #16 scatter de-duplication, hoisted color maps | `1973ad1` |
+| #12 trim_level over subtitle parsing | `5c9b558` |
+| #15 aux-parser example moved to USAGE.md | `4044ad9` |
+| #8 analysis_app split into functions + main() | `0b0ec3d` |
+
+Verified along the way: ruff check/format clean; batched-upsert semantics via a fake-client test; the rewritten stale-hours query and pagination read-only against the live database; figure-for-figure scatter equivalence across all color modes; the dashboard running end-to-end (bare mode + served HTTP 200); and `cli-summarize.py` live.
+
 ## Summary
 
 The core pipeline package (`finnbruktbil/`) is generally well-structured and, in the newer modules (`cli/config.py`, `cli/summarize.py`, `vegvesen.py`, `scraper.py`), thoughtfully documented — the constraint-evaluator registry and the Norwegian↔ASCII column mapping are clean, well-commented designs that match the conventions in CLAUDE.md. The main weaknesses are concentrated in two places: `analysis_app.py`, an 800-line top-level Streamlit script with heavy copy-paste duplication and redundant imports, and `db.py`'s `fetch_ids_for_scraping`, which has a genuine correctness bug plus leftover dead branches. There is no linter/formatter configured, and several legacy artifacts (`scrape-ids.py`, `scrape-articles.py`, `data/ids.json`, scratch markdown) linger at the repo root and inside the package, obscuring the real entry points. Error handling is uniformly `print()`-based with broad `except Exception` catches, which is acceptable for a personal tool but inconsistent enough to be worth noting. Nothing here threatens the canonical `cli-*.py` workflows, but the analysis module and DB query logic are the highest-leverage cleanup targets.
