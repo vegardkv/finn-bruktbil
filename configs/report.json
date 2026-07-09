@@ -1,0 +1,14 @@
+{
+    "title": "Kia EV9 — FINN bruktbil report",
+    "output_dir": "site",
+    "constraints": {
+        "merke": "Kia",
+        "modell": "EV9",
+        "imported": [false, "hard"],
+        "number_of_seats": [7, "hard"],
+        "max_price": [800000, "soft"],
+        "trim_level": ["GT-Line", "soft"],
+        "max_mileage": [30000, "soft"],
+        "color": ["grey", "soft"]
+    }
+}

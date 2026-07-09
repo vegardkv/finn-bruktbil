@@ -57,3 +57,6 @@ data/
 # Temporary files
 *.tmp
 *.temp
+
+# Generated static report (built by `finnbruktbil report` / CI)
+site/

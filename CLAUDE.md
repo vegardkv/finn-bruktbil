@@ -20,6 +20,7 @@ uv run cli-fetch-ids-favorites.py  # collect ad ids from a saved favorites HTML 
 uv run cli-download-data.py        # scrape ad details for stored ids (configs/download.json)
 uv run cli-analyze.py              # launch the Streamlit dashboard (configs/analyze.json)
 uv run cli-summarize.py            # summarize cars matching soft/hard constraints (configs/summarize.json)
+uv run cli-report.py               # render a static HTML report for GitHub Pages (configs/report.json)
 ```
 
 Equivalent CLI subcommands (same functions, explicit config path argument):
@@ -28,6 +29,7 @@ uv run finnbruktbil fetch-ids configs/fetch.json
 uv run finnbruktbil download configs/download.json
 uv run finnbruktbil analyze configs/analyze.json
 uv run finnbruktbil summarize configs/summarize.json
+uv run finnbruktbil report configs/report.json
 ```
 
 Run the Streamlit app directly (bypassing the CLI):
@@ -50,7 +52,9 @@ The package lives under `finnbruktbil/`. The CLI (`finnbruktbil/cli/__init__.py`
 - `aux_data_parser.py` — optional OpenAI (`gpt-4o-mini`) extraction from free-text ad descriptions, returning structured `tire_sets`, `trim_level`, and `imported`. Only runs when `parse_aux_data: true`. The `imported` prompt is deliberately conservative (explicit evidence only, else `None`).
 - `vegvesen.py` — looks up import status via Statens Vegvesen's open API, either by chassis number/VIN (`lookup_import_status_by_vin`, `understellsnummer`) or by registration number (`lookup_import_status`, `kjennemerke`); both share the private `_lookup` request/retry loop and identical response shape. This is the **primary** source for `imported`/`import_country`. The scraper tries the VIN first (almost always present in the ad), then the reg number, then the OpenAI description signal only as a fallback when the API lookups are inconclusive or no key is set. Requires `SVV_API_KEY`.
 - `db.py` — all Supabase access. Two tables: `ad_ids` (id queue with `scrape_status`: pending/scraped/missing) and `ad_details` (one row per scraped ad). `AdRecord` is the in-memory dataclass; `load_ads_dataframe` reads everything back into a pandas DataFrame for analysis.
-- `analysis_app.py` — the Streamlit dashboard: sidebar filters, plotly charts, and an OLS regression (`Price = c₀ + c₁·mileage + c₂·age`) producing the interpretable cost-per-km / cost-per-year coefficients and a 0–1 "usedness" score (see PRICE_MODEL.md).
+- `analysis_app.py` — the Streamlit dashboard: sidebar filters, plotly charts, and an OLS regression (`Price = c₀ + c₁·mileage + c₂·age`) producing the interpretable cost-per-km / cost-per-year coefficients and a 0–1 "usedness" score (see PRICE_MODEL.md). The chart/analysis functions live in `plots.py` and are re-exported here for backwards compatibility.
+- `plots.py` — Streamlit-free chart/analysis helpers (`make_price_scatter`, `perform_ols_analysis`, `add_derived_columns`, `_linear_fit`, `_regression_trace`, `PlotOptions`, the color/label constants) shared by the dashboard and the report generator, so building a figure never requires importing `streamlit`. `add_derived_columns` is self-contained (computes `import_category` when absent).
+- `cli/report.py` — the **report** stage. Reuses `summarize_cars` (passing a pre-loaded DataFrame so the DB is read once) for the tables and the `plots.py` helpers for three interactive Plotly figures (price vs. usedness / mileage / registration date, colored by availability), and writes a single self-contained `output_dir/index.html` (Plotly via CDN). Degrades to a note when there is too little data. Published by `.github/workflows/report.yml` (daily cron + manual dispatch), which reads Supabase via `SUPABASE_URL`/`SUPABASE_KEY` Actions secrets and deploys to GitHub Pages — no output is committed (`site/` is gitignored).
 
 **Norwegian ↔ ASCII column naming:** `AdRecord` and analysis code use Norwegian field names with diacritics (`modellår`, `dører`, `interiørfarge`, `batterikapasitet_kWh`). Supabase columns use ASCII equivalents (`modellaar`, `doerer`, `aarsavgift_info`, etc.). `db.save_ad_detail` maps Norwegian→ASCII on write and `db.load_ads_dataframe` maps ASCII→Norwegian on read. Keep both sides of this mapping in sync when adding fields. `raw_spec_json` (JSONB) stores all scraped key-info; on read it is flattened into `spec.*` columns.
 

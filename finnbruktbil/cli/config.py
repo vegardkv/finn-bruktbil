@@ -56,6 +56,14 @@ class CarConstraints(BaseModel):
     # more constraints added here later
 
 
+class ReportConfig(BaseModel):
+    """Config for the static HTML report stage (``cli/report.py``)."""
+
+    constraints: CarConstraints
+    output_dir: Path = Path("site")
+    title: str | None = None  # defaults to "{merke} {modell} report" when unset
+
+
 def load_config(path: str | Path, model_cls: type[T]) -> T:
     config_path = Path(path)
     raw = config_path.read_text(encoding="utf-8")

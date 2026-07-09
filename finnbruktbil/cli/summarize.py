@@ -173,20 +173,30 @@ class SummaryResult:
     available_sorted: list[tuple[pd.Series, int]]  # currently available (status == "available")
 
 
-def summarize_cars(config: CarConstraints) -> SummaryResult:
+def filter_model(df: pd.DataFrame, merke: str, modell: str) -> pd.DataFrame:
+    """Return the rows matching ``merke``/``modell`` (both case-insensitive)."""
+
+    return df[
+        df["merke"].fillna("").str.strip().str.lower().eq(merke.strip().lower())
+        & df["modell"].fillna("").str.strip().str.lower().eq(modell.strip().lower())
+    ]
+
+
+def summarize_cars(config: CarConstraints, df: pd.DataFrame | None = None) -> SummaryResult:
     """Filter scraped ads to the target model, drop hard-constraint failures,
     score the survivors by soft constraints met, and split by availability.
-    Also tally, per constraint, how many cars satisfy it vs. lack the data."""
+    Also tally, per constraint, how many cars satisfy it vs. lack the data.
+
+    Pass ``df`` to reuse an already-loaded ads DataFrame (e.g. the report
+    generator, which also needs it for charts); otherwise it is loaded here."""
 
     active = _active_constraints(config)
-    df = load_ads_dataframe()
+    if df is None:
+        df = load_ads_dataframe()
     if df.empty:
         return SummaryResult(0, [], [], [])
 
-    model_df = df[
-        df["merke"].fillna("").str.strip().str.lower().eq(config.merke.strip().lower())
-        & df["modell"].fillna("").str.strip().str.lower().eq(config.modell.strip().lower())
-    ]
+    model_df = filter_model(df, config.merke, config.modell)
 
     tallies = {field: {"satisfied": 0, "missing": 0} for field, _, _ in active}
     feasible: list[tuple[pd.Series, int]] = []

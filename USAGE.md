@@ -117,6 +117,11 @@ You can find these in your Supabase dashboard under **Project Settings → API**
    finnbruktbil analyze configs/analyze.json
    ```
 
+4. Generate a static HTML report (for GitHub Pages) to `site/index.html`:
+   ```shell
+   finnbruktbil report configs/report.json
+   ```
+
 Each sub-command consumes a JSON configuration file that is validated with Pydantic. Example documents:
 
 Example `configs/fetch.json`:
@@ -181,7 +186,44 @@ Example `configs/analyze.json`:
 }
 ```
 
+Example `configs/report.json` (embeds the same constraint block as `configs/summarize.json`):
+
+```json
+{
+   "title": "Kia EV9 — FINN bruktbil report",
+   "output_dir": "site",
+   "constraints": {
+      "merke": "Kia",
+      "modell": "EV9",
+      "imported": [false, "hard"],
+      "number_of_seats": [7, "hard"],
+      "max_price": [800000, "soft"],
+      "trim_level": ["GT-Line", "soft"],
+      "max_mileage": [30000, "soft"],
+      "color": ["grey", "soft"]
+   }
+}
+```
+
 Omit values to fall back to defaults. The download and fetch jobs also honour the `headless` flag for the Selenium driver.
+
+## Report / GitHub Pages
+
+`finnbruktbil report configs/report.json` renders the summarize tables plus three interactive
+Plotly charts (price vs. usedness / mileage / registration date, colored by availability) into a
+single self-contained `site/index.html`. The page loads Plotly from a CDN, so viewing it needs an
+internet connection.
+
+The report is published to GitHub Pages by `.github/workflows/report.yml` on a daily schedule (and
+on-demand via **Actions → Publish report → Run workflow**). The workflow only reads the database —
+no scraping runs in CI. One-time repository setup:
+
+1. **Settings → Pages → Source: GitHub Actions**.
+2. **Settings → Secrets and variables → Actions** — add `SUPABASE_URL` and `SUPABASE_KEY` (use a
+   read-capable key, not the service-role key).
+
+Note the resulting page is public, so anything on it (prices, ad links, your constraints) is
+world-readable at the Pages URL.
 
 ## Python API
 
@@ -192,11 +234,13 @@ from finnbruktbil.cli.config import (
    AnalyzeConfig,
    DownloadConfig,
    FetchIdsConfig,
+   ReportConfig,
    load_config,
 )
 from finnbruktbil.cli.fetch_ids import fetch_ids_into_db
 from finnbruktbil.cli.download_data import download_ads
 from finnbruktbil.cli.analyze import launch_streamlit
+from finnbruktbil.cli.report import generate_report
 
 fetch_cfg = load_config("configs/fetch.json", FetchIdsConfig)
 fetch_ids_into_db(fetch_cfg)
@@ -206,6 +250,9 @@ download_ads(download_cfg)
 
 analyze_cfg = load_config("configs/analyze.json", AnalyzeConfig)
 launch_streamlit(analyze_cfg)
+
+report_cfg = load_config("configs/report.json", ReportConfig)
+generate_report(report_cfg)  # writes site/index.html
 ```
 
 Refer to the modules under `finnbruktbil/` for additional helpers and extension points.

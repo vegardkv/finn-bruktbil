@@ -7,7 +7,7 @@ import logging
 import sys
 from collections.abc import Iterable, Sequence
 
-from . import analyze, download_data, fetch_ids, summarize
+from . import analyze, download_data, fetch_ids, report, summarize
 
 
 def setup_logging(level: int = logging.INFO) -> None:
@@ -30,6 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
     download_data.add_parser(subparsers)
     analyze.add_parser(subparsers)
     summarize.add_parser(subparsers)
+    report.add_parser(subparsers)
 
     return parser
 
