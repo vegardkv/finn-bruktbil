@@ -240,9 +240,16 @@ def generate_report(config: ReportConfig) -> Path:
     df = load_ads_dataframe()
     summary = summarize_cars(config.constraints, df)
 
-    model_df = filter_model(df, config.constraints.merke, config.constraints.modell)
-    model_df = add_derived_columns(model_df)
-    charts_html = _build_charts(model_df)
+    if df.empty:
+        # No rows available (e.g. an empty DB, or a read key that RLS filters to
+        # nothing). An empty DataFrame also has no columns, so skip filtering.
+        charts_html = (
+            '<div class="chart"><p class="note">No ad data available (the database returned no rows).</p></div>'
+        )
+    else:
+        model_df = filter_model(df, config.constraints.merke, config.constraints.modell)
+        model_df = add_derived_columns(model_df)
+        charts_html = _build_charts(model_df)
 
     title = config.title or f"{config.constraints.merke} {config.constraints.modell} report"
     page = _render_page(title, summary, charts_html)
