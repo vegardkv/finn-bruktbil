@@ -44,6 +44,7 @@ def download_ads(config: DownloadConfig) -> tuple[int, int]:
             limit=config.limit,
             stale_hours=config.stale_hours,
             random_order=config.random_order,
+            skip_sold=config.skip_sold,
         )
 
     if not target_ids:

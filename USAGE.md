@@ -144,9 +144,17 @@ Example `configs/download.json`:
    "stale_hours": 24,
    "random_order": false,
    "headless": true,
-   "parse_aux_data": false
+   "parse_aux_data": false,
+   "skip_sold": true
 }
 ```
+
+**Skipping sold ads**: with `"skip_sold": true` the downloader leaves out every ad a previous scrape
+found sold or inactive/removed (the `solgt` flag covers both), so the `limit` is spent on ads that
+can still change and no request is made for the rest. On a queue that is mostly sold this cuts the
+number of page loads dramatically. The default is `false`, which re-visits everything as before; with
+the flag on, flip it back to `false` for a run when you deliberately want to refresh the sold ads.
+Ads that have never been scraped are of course never skipped.
 
 **Auxiliary Data Parsing**: Set `"parse_aux_data": true` to enable parsing of additional information from ad descriptions using OpenAI's API. This extracts:
 - **Tire sets**: Whether the car comes with one or two sets of tires (including winter tires)

@@ -26,6 +26,13 @@ class DownloadConfig(BaseModel):
     parse_aux_data: bool = Field(
         default=False, description="Enable parsing of auxiliary data (tire sets, trim level) using OpenAI API"
     )
+    skip_sold: bool = Field(
+        default=False,
+        description=(
+            "Skip ads a previous scrape found sold or inactive/removed, so they are never re-requested. "
+            "Set it to false for a run when you do want to revisit them."
+        ),
+    )
 
 
 class AnalyzeConfig(BaseModel):

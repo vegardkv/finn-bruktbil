@@ -3,5 +3,6 @@
    "stale_hours": 11,
    "random_order": true,
    "headless": true,
-   "parse_aux_data": true
+   "parse_aux_data": true,
+   "skip_sold": true
 }

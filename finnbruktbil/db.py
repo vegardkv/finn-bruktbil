@@ -311,17 +311,44 @@ def mark_missing(client: Client, ad_id: str) -> None:
     ).eq("ad_id", ad_id).execute()
 
 
-def fetch_ids_for_scraping(
-    client: Client,
-    limit: int,
-    stale_hours: int | None = None,
-    random_order: bool = False,
-) -> list[str]:
-    """Fetch ad IDs that need to be scraped.
+# Rows per page when scanning a table that may exceed one response. Comfortably
+# below PostgREST's 1000-row cap, so a short page always means "end of table".
+_SCAN_PAGE_SIZE = 500
 
-    With ``stale_hours`` set, ids whose ``last_scraped`` is null or older than
-    the threshold qualify; otherwise only never-scraped ids do.
+
+def fetch_sold_ad_ids(client: Client) -> set[str]:
+    """The ids whose last scrape found the ad sold or inactive/removed.
+
+    The scraper sets ``solgt`` for both cases (see scraper.py), so this one flag
+    identifies every ad not worth re-requesting. Lives in ``ad_details``, not in
+    the ``ad_ids`` queue, hence the separate lookup.
     """
+    sold: set[str] = set()
+    offset = 0
+    while True:
+        result = (
+            client.table("ad_details")
+            .select("ad_id")
+            .eq("solgt", True)
+            .range(offset, offset + _SCAN_PAGE_SIZE - 1)
+            .execute()
+        )
+        sold.update(row["ad_id"] for row in result.data)
+        if len(result.data) < _SCAN_PAGE_SIZE:
+            return sold
+        offset += _SCAN_PAGE_SIZE
+
+
+def _fetch_scrape_queue_page(
+    client: Client,
+    offset: int,
+    size: int,
+    stale_hours: int | None,
+) -> list[dict]:
+    """One page of the scrape queue, oldest-first. With ``stale_hours`` set, ids
+    whose ``last_scraped`` is null or older than the threshold qualify; otherwise
+    only never-scraped ids do."""
+
     query = client.table("ad_ids").select("ad_id").in_("scrape_status", ["pending", "scraped"])
 
     if stale_hours is None:
@@ -330,13 +357,43 @@ def fetch_ids_for_scraping(
         threshold = (datetime.now(UTC) - timedelta(hours=stale_hours)).isoformat()
         query = query.or_(f"last_scraped.is.null,last_scraped.lte.{threshold}")
 
-    # Never-scraped ids first, then oldest-scraped. Supabase has no native
-    # RANDOM() ordering via the client, so random_order only shuffles within
-    # the fetched page.
-    result = query.order("last_scraped", nullsfirst=True).limit(limit).execute()
+    # Never-scraped ids first, then oldest-scraped, with ad_id breaking ties so
+    # paging past excluded ids can't skip or repeat rows.
+    query = query.order("last_scraped", nullsfirst=True).order("ad_id")
+    return query.range(offset, offset + size - 1).execute().data
 
-    ids = [row["ad_id"] for row in result.data]
 
+def fetch_ids_for_scraping(
+    client: Client,
+    limit: int,
+    stale_hours: int | None = None,
+    random_order: bool = False,
+    skip_sold: bool = False,
+) -> list[str]:
+    """Fetch ad IDs that need to be scraped.
+
+    ``stale_hours`` selects which ids qualify (see
+    :func:`_fetch_scrape_queue_page`). With ``skip_sold``, ads already known to be
+    sold/inactive are left out, so the ``limit`` is spent on ads that can still
+    change.
+    """
+    excluded = fetch_sold_ad_ids(client) if skip_sold else set()
+
+    # Without exclusions one page of `limit` rows is the answer. With them, scan
+    # the queue in larger pages until `limit` keepers are found or it runs out.
+    page_size = max(limit, _SCAN_PAGE_SIZE) if excluded else limit
+    ids: list[str] = []
+    offset = 0
+    while len(ids) < limit:
+        rows = _fetch_scrape_queue_page(client, offset, page_size, stale_hours)
+        ids.extend(row["ad_id"] for row in rows if row["ad_id"] not in excluded)
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    ids = ids[:limit]
+
+    # Supabase has no native RANDOM() ordering via the client, so random_order
+    # only shuffles within the fetched ids.
     if random_order:
         import random
 
