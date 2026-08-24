@@ -47,6 +47,26 @@ def _parse_int(value: str | None) -> int | None:
         return None
 
 
+# Selectors that have held the specification <dl>, newest markup first. FINN
+# renames these wrappers now and then, so try each in turn before giving up.
+KEY_INFO_SELECTORS = (".key-info", ".key-info-section", ".specifications-area")
+
+
+def _key_text(key_el: WebElement) -> str:
+    """Text of a <dt>, minus any tooltip help text rendered inside it.
+
+    FINN wraps the little "?" help popovers in a <w-attention> custom element
+    whose message lives in the light DOM, so a plain textContent read glues the
+    whole tooltip onto the label (e.g. "Rekkevidde (WLTP)WLTP er et maltall...").
+    """
+    text = _get_text_content(key_el)
+    for tooltip in key_el.find_elements(By.CSS_SELECTOR, "w-attention, [slot='message']"):
+        tooltip_text = _get_text_content(tooltip)
+        if tooltip_text:
+            text = text.replace(tooltip_text, " ")
+    return " ".join(text.split())
+
+
 def _extract_key_info(root: WebElement) -> dict[str, str]:
     key_info: dict[str, str] = {}
     for dl in root.find_elements(By.TAG_NAME, "dl"):
@@ -55,8 +75,7 @@ def _extract_key_info(root: WebElement) -> dict[str, str]:
         if len(keys) != len(values):
             continue
         for key_el, value_el in zip(keys, values, strict=True):
-            # Use textContent which gets all text (even hidden)
-            raw_key = (key_el.get_attribute("textContent") or "").strip()
+            raw_key = _key_text(key_el)
             raw_value = _get_text_content(value_el)
             if not raw_key or not raw_value:
                 continue
@@ -191,12 +210,21 @@ def scrape_ad(driver, ad_id: str, parse_aux_data: bool = False) -> AdRecord | No
     except NoSuchElementException:
         pass
 
-    try:
-        key_info_section = driver.find_element(By.CSS_SELECTOR, ".key-info-section")
-        key_info = _extract_key_info(key_info_section)
-    except NoSuchElementException:
-        logger.warning(f"No key-info-section found for ad {ad_id}")
-        key_info = {}
+    key_info = {}
+    for selector in KEY_INFO_SELECTORS:
+        sections = driver.find_elements(By.CSS_SELECTOR, selector)
+        if sections:
+            key_info = _extract_key_info(sections[0])
+            if key_info:
+                break
+    if not key_info:
+        logger.warning(
+            f"No key info found for ad {ad_id} using {list(KEY_INFO_SELECTORS)}; "
+            "falling back to scanning every <dl> on the page"
+        )
+        key_info = _extract_key_info(driver.find_element(By.TAG_NAME, "body"))
+        if not key_info:
+            logger.warning(f"No key info at all for ad {ad_id} - FINN's markup has probably changed")
 
     # Track which keys were used and which were not
     expected_keys = set(FIELD_MAPPING.values())
