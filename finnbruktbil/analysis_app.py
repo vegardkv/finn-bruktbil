@@ -6,9 +6,16 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+# Streamlit executes this file as a top-level script, so it has no parent package and
+# the relative imports below cannot resolve on their own. Put the repo root on the path
+# and name the package (PEP 366) before any of them run. Must stay above the imports.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    __package__ = "finnbruktbil"
+
 # Chart/analysis helpers live in plots.py so the report generator and CI can build
 # figures without importing streamlit. Re-exported here for backwards compatibility.
-from .plots import (  # noqa: F401
+from .plots import (  # noqa: E402, F401
     AXIS_LABELS,
     DISCRETE_COLOR_MODES,
     MIN_OLS_SAMPLES,
@@ -25,12 +32,7 @@ from .plots import (  # noqa: F401
     perform_ols_analysis,
 )
 
-# Add parent directory to path to support both direct execution and module import
-if __name__ == "__main__" and __package__ is None:
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from finnbruktbil.db import load_ads_dataframe
-else:
-    from .db import load_ads_dataframe
+from .db import load_ads_dataframe  # noqa: E402
 
 
 def _series_bounds(series, fallback_min: int = 0, fallback_max: int = 0) -> tuple[int, int]:
