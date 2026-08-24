@@ -1,0 +1,7 @@
+{
+   "base_url": "https://www.finn.no/mobility/search/car?variant=1.8078.2000555",
+   "limit": 150,
+   "max_pages": 10,
+   "fetched_by": "filtered-model-y",
+   "headless": true
+}

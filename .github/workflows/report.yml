@@ -29,6 +29,12 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      # Second model, published as a sub-page of the same Pages site.
+      - name: Generate Tesla Model Y report
+        run: uv run finnbruktbil report configs/report-tesla.json
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

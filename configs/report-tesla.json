@@ -1,0 +1,12 @@
+{
+    "title": "Tesla Model Y — FINN bruktbil report",
+    "output_dir": "site/tesla-model-y",
+    "constraints": {
+        "merke": "Tesla",
+        "modell": "Model Y",
+        "imported": [false, "hard"],
+        "max_price": [400000, "soft"],
+        "max_mileage": [30000, "soft"],
+        "color": ["grey", "soft"]
+    }
+}

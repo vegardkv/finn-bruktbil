@@ -1,0 +1,8 @@
+{
+   "merke": "Tesla",
+   "modell": "Model Y",
+   "imported": [false, "hard"],
+   "max_price": [400000, "soft"],
+   "max_mileage": [30000, "soft"],
+   "color": ["grey", "soft"]
+}
