@@ -1,0 +1,7 @@
+{
+   "base_url": "https://www.finn.no/mobility/search/car?variant=1.772.1545",
+   "limit": 150,
+   "max_pages": 10,
+   "fetched_by": "filtered-ioniq9",
+   "headless": true
+}

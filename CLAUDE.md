@@ -23,14 +23,19 @@ uv run cli-summarize.py            # summarize cars matching soft/hard constrain
 uv run cli-report.py               # render a static HTML report for GitHub Pages (configs/report.json)
 ```
 
-The unsuffixed scripts above target the Kia EV9. A second tracked model, the Tesla Model Y,
-reuses the same stages via `-tesla`-suffixed wrappers/configs (no favorites mode, no dashboard):
+The unsuffixed scripts above target the Kia EV9. Two more tracked models, the Tesla Model Y
+and the Hyundai Ioniq 9, reuse the same stages via `-tesla`- and `-ioniq9`-suffixed
+wrappers/configs (no favorites mode, no dashboard):
 ```shell
 uv run cli-fetch-ids-tesla.py      # collect ad ids from the Model Y FINN search (configs/fetch-tesla.json)
 uv run cli-summarize-tesla.py      # summarize Model Y candidates (configs/summarize-tesla.json)
 uv run cli-report-tesla.py         # render the Model Y report into site/tesla-model-y (configs/report-tesla.json)
+
+uv run cli-fetch-ids-ioniq9.py     # collect ad ids from the Ioniq 9 FINN search (configs/fetch-ioniq9.json)
+uv run cli-summarize-ioniq9.py     # summarize Ioniq 9 candidates (configs/summarize-ioniq9.json)
+uv run cli-report-ioniq9.py        # render the Ioniq 9 report into site/hyundai-ioniq-9 (configs/report-ioniq9.json)
 ```
-`cli-download-data.py` is model-agnostic — it drains the shared id queue, so it covers both models.
+`cli-download-data.py` is model-agnostic — it drains the shared id queue, so it covers every model.
 
 Equivalent CLI subcommands (same functions, explicit config path argument):
 ```shell
@@ -63,7 +68,7 @@ The package lives under `finnbruktbil/`. The CLI (`finnbruktbil/cli/__init__.py`
 - `db.py` — all Supabase access. Two tables: `ad_ids` (id queue with `scrape_status`: pending/scraped/missing) and `ad_details` (one row per scraped ad). `fetch_ids_for_scraping` picks the download queue; its `skip_sold` flag (download config) excludes ids that `fetch_sold_ad_ids` reports as `solgt` in `ad_details` — since that flag lives in the other table it is a separate lookup plus a client-side filter, so the queue is scanned in `_SCAN_PAGE_SIZE` pages until `limit` keepers are found. `AdRecord` is the in-memory dataclass; `load_ads_dataframe` reads everything back into a pandas DataFrame for analysis.
 - `analysis_app.py` — the Streamlit dashboard: sidebar filters, plotly charts, and an OLS regression (`Price = c₀ + c₁·mileage + c₂·age`) producing the interpretable cost-per-km / cost-per-year coefficients and a 0–1 "usedness" score (see PRICE_MODEL.md). The chart/analysis functions live in `plots.py` and are re-exported here for backwards compatibility.
 - `plots.py` — Streamlit-free chart/analysis helpers (`make_price_scatter`, `perform_ols_analysis`, `add_derived_columns`, `_linear_fit`, `_regression_trace`, `PlotOptions`, the color/label constants) shared by the dashboard and the report generator, so building a figure never requires importing `streamlit`. `add_derived_columns` is self-contained (computes `import_category` when absent).
-- `cli/report.py` — the **report** stage. Reuses `summarize_cars` (passing a pre-loaded DataFrame so the DB is read once) for the tables and the `plots.py` helpers for three interactive Plotly figures (price vs. usedness / mileage / registration date, colored by availability), and writes a single self-contained `output_dir/index.html` (Plotly via CDN). Degrades to a note when there is too little data. Published by `.github/workflows/report.yml` (daily cron + manual dispatch), which reads Supabase via `SUPABASE_URL`/`SUPABASE_KEY` Actions secrets and deploys to GitHub Pages — no output is committed (`site/` is gitignored). The workflow runs the stage once per tracked model into the same `site/` tree: EV9 at `site/index.html`, Model Y at `site/tesla-model-y/index.html`.
+- `cli/report.py` — the **report** stage. Reuses `summarize_cars` (passing a pre-loaded DataFrame so the DB is read once) for the tables and the `plots.py` helpers for three interactive Plotly figures (price vs. usedness / mileage / registration date, colored by availability), and writes a single self-contained `output_dir/index.html` (Plotly via CDN). Degrades to a note when there is too little data. Published by `.github/workflows/report.yml` (daily cron + manual dispatch), which reads Supabase via `SUPABASE_URL`/`SUPABASE_KEY` Actions secrets and deploys to GitHub Pages — no output is committed (`site/` is gitignored). The workflow runs the stage once per tracked model into the same `site/` tree: EV9 at `site/index.html`, Model Y at `site/tesla-model-y/index.html`, Ioniq 9 at `site/hyundai-ioniq-9/index.html`.
 
 **Norwegian ↔ ASCII column naming:** `AdRecord` and analysis code use Norwegian field names with diacritics (`modellår`, `dører`, `interiørfarge`, `batterikapasitet_kWh`). Supabase columns use ASCII equivalents (`modellaar`, `doerer`, `aarsavgift_info`, etc.). `db.save_ad_detail` maps Norwegian→ASCII on write and `db.load_ads_dataframe` maps ASCII→Norwegian on read. Keep both sides of this mapping in sync when adding fields. `raw_spec_json` (JSONB) stores all scraped key-info; on read it is flattened into `spec.*` columns.
 
