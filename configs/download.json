@@ -1,6 +1,6 @@
 {
-   "limit": 700,
-   "stale_hours": 11,
+   "limit": 1000,
+   "stale_hours": 1,
    "random_order": true,
    "headless": true,
    "parse_aux_data": true,

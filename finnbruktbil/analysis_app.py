@@ -15,7 +15,8 @@ if __package__ in (None, ""):
 
 # Chart/analysis helpers live in plots.py so the report generator and CI can build
 # figures without importing streamlit. Re-exported here for backwards compatibility.
-from .plots import (  # noqa: E402, F401
+from .db import load_ads_dataframe
+from .plots import (  # noqa: F401
     AXIS_LABELS,
     DISCRETE_COLOR_MODES,
     MIN_OLS_SAMPLES,
@@ -31,8 +32,6 @@ from .plots import (  # noqa: E402, F401
     map_tire_sets,
     perform_ols_analysis,
 )
-
-from .db import load_ads_dataframe  # noqa: E402
 
 
 def _series_bounds(series, fallback_min: int = 0, fallback_max: int = 0) -> tuple[int, int]:
