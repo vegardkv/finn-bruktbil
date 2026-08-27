@@ -5,6 +5,7 @@ from .cli import main as cli_main
 from .db import (
     AdRecord,
     db_session,
+    deduplicate_by_vin,
     fetch_ids_for_scraping,
     initialize_schema,
     load_ads_dataframe,
@@ -19,6 +20,7 @@ __all__ = [
     "cli_main",
     "create_driver",
     "db_session",
+    "deduplicate_by_vin",
     "fetch_ids_for_scraping",
     "initialize_schema",
     "load_ads_dataframe",

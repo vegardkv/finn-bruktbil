@@ -444,12 +444,76 @@ def _flatten_specs(ads):
     return pd.concat([ads.drop(columns=["raw_spec_json"]), specs_df], axis=1)
 
 
+# A chassis number shorter than this is treated as unusable for identity (FINN
+# occasionally shows a truncated or placeholder value); such rows are never merged.
+_MIN_VIN_LENGTH = 11
+
+
+def _normalized_vin(ads):
+    """The ``chassisnummer`` column normalized into a comparison key.
+
+    Upper-cased and stripped of whitespace, with anything too short to be a real
+    chassis number blanked out so it can't collide with another car.
+    """
+    import pandas as pd
+
+    vin = ads["chassisnummer"].astype("string").str.strip().str.upper().str.replace(" ", "", regex=False)
+    return vin.where(vin.str.len().ge(_MIN_VIN_LENGTH), pd.NA)
+
+
+def deduplicate_by_vin(ads):
+    """Collapse relistings so each physical car appears once.
+
+    Sellers re-post the same car under a new ad id (usually walking the price
+    down), so the raw ``ad_details`` table over-represents cars that were hard to
+    sell -- badly enough to skew both the summary listings and the price
+    regression. Cars are identified by their normalized chassis number (VIN).
+
+    The surviving row per car is the currently-available ad if there is one, else
+    the most recently updated ad, so the kept ad id, URL and price are the live
+    ones. Rows without a usable VIN (failed or partial scrapes) pass through
+    untouched. ``ad_count`` records how many ads the car was listed under, which
+    is a signal in its own right.
+
+    Deduplication happens on read only -- the superseded rows stay in the database
+    as the car's price history.
+    """
+    import pandas as pd
+
+    if ads.empty or "chassisnummer" not in ads.columns:
+        return ads.assign(ad_count=1) if not ads.empty else ads
+
+    def as_datetime(column: str):
+        if column not in ads.columns:
+            return pd.Series(pd.NaT, index=ads.index)
+        return pd.to_datetime(ads[column], errors="coerce", format="mixed", utc=True)
+
+    # "Last updated" is what the seller edited; fall back to when we scraped it.
+    updated = as_datetime("sist_oppdatert").fillna(as_datetime("fetched_at"))
+
+    ranked = ads.assign(
+        _vin=_normalized_vin(ads),
+        # Sorted descending, so available (1) outranks sold/unknown (0).
+        _available=(ads["status"] == "available").astype(int) if "status" in ads.columns else 0,
+        _updated=updated,
+    )
+    keyless = ranked[ranked["_vin"].isna()].assign(ad_count=1)
+    keyed = ranked[ranked["_vin"].notna()].sort_values(["_available", "_updated", "ad_id"], ascending=False)
+    keyed = keyed.assign(ad_count=keyed.groupby("_vin")["ad_id"].transform("size"))
+    keyed = keyed.drop_duplicates("_vin", keep="first")
+
+    merged = pd.concat([keyed, keyless]).drop(columns=["_vin", "_available", "_updated"])
+    # Concatenating the two groups scrambled the row order; restore the input order.
+    return merged.sort_index()
+
+
 def load_ads_dataframe():
     """Load all ad details into a pandas DataFrame.
 
     Reads the raw ``ad_details`` rows and applies the client-side transforms the
     analysis code relies on: rename ASCII columns to Norwegian, derive ``status``,
-    and flatten ``raw_spec_json`` into ``spec.*`` columns.
+    flatten ``raw_spec_json`` into ``spec.*`` columns, and collapse relistings of
+    the same physical car (see :func:`deduplicate_by_vin`).
     """
     try:
         import pandas as pd
@@ -480,5 +544,6 @@ def load_ads_dataframe():
     ads = _rename_to_norwegian(ads)
     ads = _add_status(ads)
     ads = _flatten_specs(ads)
+    ads = deduplicate_by_vin(ads)
 
     return ads

@@ -75,6 +75,14 @@ def _esc(value: Any) -> str:
     return html.escape("" if value is None else str(value))
 
 
+def _fmt_ad_count(value: Any) -> str:
+    """The number of ad ids a car has been listed under (see ``deduplicate_by_vin``).
+
+    A count above 1 means the ad was re-posted, i.e. the car has been slow to sell.
+    """
+    return f"{int(value)}" if _notna(value) else "1"
+
+
 def _render_headline(summary: SummaryResult) -> str:
     cards = [
         (summary.model_count, "cars found for make/model"),
@@ -132,12 +140,14 @@ def _render_car_table(title: str, cars: list[tuple[pd.Series, int]]) -> str:
             f"<td>{_fmt_int(car.get('kilometerstand_km'))}</td>"
             f"<td>{_fmt_int(car.get('modellår'))}</td>"
             f"<td>{_esc(car.get('status', '—'))}</td>"
+            f"<td>{_fmt_ad_count(car.get('ad_count'))}</td>"
             "</tr>"
         )
     return (
         header + "<table><thead><tr>"
         "<th>Score</th><th>Title</th><th>Price</th><th>Seats</th>"
         "<th>Mileage (km)</th><th>Model year</th><th>Status</th>"
+        '<th title="Number of ad ids this car has been listed under">Ads</th>'
         "</tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table>"
     )

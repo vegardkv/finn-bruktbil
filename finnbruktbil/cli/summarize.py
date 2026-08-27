@@ -224,6 +224,17 @@ def summarize_cars(config: CarConstraints, df: pd.DataFrame | None = None) -> Su
 # --- Presentation --------------------------------------------------------------
 
 
+def _relisting_note(car: pd.Series) -> str:
+    """A ``listed 3x | `` prefix when the car was posted under several ad ids, else "".
+
+    ``ad_count`` is set by ``deduplicate_by_vin``; a high count means the car has
+    been re-posted repeatedly, i.e. it has been slow to sell.
+    """
+
+    count = car.get("ad_count")
+    return f"listed {int(count)}x | " if _notna(count) and count > 1 else ""
+
+
 def _format_car_line(car: pd.Series, score: int) -> str:
     title = car.get("title") or f"{car.get('merke', '')} {car.get('modell', '')}".strip()
     price = car.get("totalpris")
@@ -232,7 +243,7 @@ def _format_car_line(car: pd.Series, score: int) -> str:
     seats_str = f"{int(seats)} seter" if _notna(seats) else "? seter"
     ad_id = car.get("ad_id", "?")
     url = f"https://www.finn.no/mobility/item/{ad_id}"
-    return f"score={score} | {title} | {price_str} | {seats_str} | {url}"
+    return f"score={score} | {title} | {price_str} | {seats_str} | {_relisting_note(car)}{url}"
 
 
 def _print_list(title: str, cars: list[tuple[pd.Series, int]]) -> None:
